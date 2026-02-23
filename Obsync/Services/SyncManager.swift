@@ -88,6 +88,10 @@ class SyncManager: ObservableObject {
                 if !config.taskNotesApiUrl.isEmpty {
                     source.apiBaseUrl = config.taskNotesApiUrl
                 }
+                // Custom status mapping (#10)
+                source.completedStatuses = config.taskNotesCompletedStatuses
+                source.openStatus = config.taskNotesOpenStatus
+                source.doneStatus = config.taskNotesDoneStatus
             }
             return source
         }

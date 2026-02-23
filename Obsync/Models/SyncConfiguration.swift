@@ -44,6 +44,11 @@ class SyncConfiguration: ObservableObject, Codable {
     @Published var syncedRemindersLists: [String]  // Empty = sync all lists, non-empty = only these lists
     @Published var addTaskLinkToReminders: Bool  // Add obsidian:// link to Reminders URL field
 
+    // MARK: - TaskNotes Custom Status Mapping (#10)
+    @Published var taskNotesCompletedStatuses: [String]  // Statuses that mean "completed" (e.g., ["done", "completed", "cancelled"])
+    @Published var taskNotesOpenStatus: String  // Status to write when marking incomplete (default: "open")
+    @Published var taskNotesDoneStatus: String  // Status to write when marking complete (default: "done")
+
     enum TaskSourceType: String, Codable, CaseIterable {
         case obsidianTasks = "obsidianTasks"
         case taskNotes = "taskNotes"
@@ -95,6 +100,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case taskSourceType, taskDestinationType, things3AuthToken, taskNotesFolder, taskNotesIntegrationMode
         case taskNotesMtnPath, taskNotesApiUrl
         case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, addTaskLinkToReminders
+        case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
     }
 
     init(
@@ -135,7 +141,10 @@ class SyncConfiguration: ObservableObject, Codable {
         launchAtLogin: Bool = false,
         maxCompletedTaskAgeDays: Int = 0,
         syncedRemindersLists: [String] = [],
-        addTaskLinkToReminders: Bool = true
+        addTaskLinkToReminders: Bool = true,
+        taskNotesCompletedStatuses: [String] = ["done", "completed", "cancelled"],
+        taskNotesOpenStatus: String = "open",
+        taskNotesDoneStatus: String = "done"
     ) {
         self.vaultPath = vaultPath
         self.syncIntervalMinutes = syncIntervalMinutes
@@ -175,6 +184,9 @@ class SyncConfiguration: ObservableObject, Codable {
         self.maxCompletedTaskAgeDays = maxCompletedTaskAgeDays
         self.syncedRemindersLists = syncedRemindersLists
         self.addTaskLinkToReminders = addTaskLinkToReminders
+        self.taskNotesCompletedStatuses = taskNotesCompletedStatuses
+        self.taskNotesOpenStatus = taskNotesOpenStatus
+        self.taskNotesDoneStatus = taskNotesDoneStatus
     }
 
     required init(from decoder: Decoder) throws {
@@ -217,6 +229,9 @@ class SyncConfiguration: ObservableObject, Codable {
         maxCompletedTaskAgeDays = try container.decodeIfPresent(Int.self, forKey: .maxCompletedTaskAgeDays) ?? 0
         syncedRemindersLists = try container.decodeIfPresent([String].self, forKey: .syncedRemindersLists) ?? []
         addTaskLinkToReminders = try container.decodeIfPresent(Bool.self, forKey: .addTaskLinkToReminders) ?? true
+        taskNotesCompletedStatuses = try container.decodeIfPresent([String].self, forKey: .taskNotesCompletedStatuses) ?? ["done", "completed", "cancelled"]
+        taskNotesOpenStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesOpenStatus) ?? "open"
+        taskNotesDoneStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesDoneStatus) ?? "done"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -259,6 +274,9 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(maxCompletedTaskAgeDays, forKey: .maxCompletedTaskAgeDays)
         try container.encode(syncedRemindersLists, forKey: .syncedRemindersLists)
         try container.encode(addTaskLinkToReminders, forKey: .addTaskLinkToReminders)
+        try container.encode(taskNotesCompletedStatuses, forKey: .taskNotesCompletedStatuses)
+        try container.encode(taskNotesOpenStatus, forKey: .taskNotesOpenStatus)
+        try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)
     }
 
     // MARK: - Persistence
@@ -293,12 +311,18 @@ class SyncConfiguration: ObservableObject, Codable {
     /// Map an Obsidian tag to a Reminders list name.
     /// Priority: 1) Explicit mapping from settings, 2) Auto-map by capitalizing the tag name.
     /// Falls back to defaultList only if the tag is empty.
+    /// Supports both # and + prefixes (e.g., #work, +Project).
     func remindersListForTag(_ tag: String) -> String {
-        let cleanTag = tag.hasPrefix("#") ? String(tag.dropFirst()) : tag
+        let cleanTag = (tag.hasPrefix("#") || tag.hasPrefix("+")) ? String(tag.dropFirst()) : tag
         guard !cleanTag.isEmpty else { return defaultList }
 
-        // 1. Check explicit mappings first
-        if let mapping = listMappings.first(where: { $0.obsidianTag.lowercased() == cleanTag.lowercased() }) {
+        // 1. Check explicit mappings first (compare without prefix)
+        if let mapping = listMappings.first(where: {
+            let mappingTag = ($0.obsidianTag.hasPrefix("#") || $0.obsidianTag.hasPrefix("+"))
+                ? String($0.obsidianTag.dropFirst())
+                : $0.obsidianTag
+            return mappingTag.lowercased() == cleanTag.lowercased()
+        }) {
             return mapping.remindersList
         }
 
@@ -308,5 +332,10 @@ class SyncConfiguration: ObservableObject, Codable {
 
     func obsidianTagForList(_ listName: String) -> String? {
         return listMappings.first { $0.remindersList.lowercased() == listName.lowercased() }?.obsidianTag
+    }
+
+    /// Check if a TaskNotes status value represents a completed task.
+    func isTaskNotesStatusCompleted(_ status: String) -> Bool {
+        return taskNotesCompletedStatuses.contains { $0.lowercased() == status.lowercased() }
     }
 }

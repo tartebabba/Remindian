@@ -4,6 +4,25 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v3.4.0 (February 2026)
+
+### New Features
+- **Custom status mapping for TaskNotes** — Configure which status values mean "completed" (e.g., `done`, `completed`, `cancelled`, `archived`, `shipped`). Also set custom status values for marking tasks complete/incomplete from Reminders. Configurable in Settings > Advanced > TaskNotes (#10)
+- **Support for + prefix in list mappings** — Tasks tagged with `+Project` now map to Reminders lists just like `#tag`. Both `#` and `+` prefixes are supported (#14)
+
+### Bug Fixes
+- Fixed: List items with wikilinks (e.g., `- [[Sarah]] coming to stay`) were incorrectly parsed as tasks and created Reminders. Now only proper checkbox items (`- [ ]` / `- [x]`) are recognized (#13)
+
+### Technical Changes
+- `SyncConfiguration` gains `taskNotesCompletedStatuses`, `taskNotesOpenStatus`, `taskNotesDoneStatus` fields
+- Task checkbox detection now uses strict prefix matching (`- [ ] ` or `- [x] `) instead of loose `- [` prefix
+- Tag regex updated from `#[\w-]+` to `[#+][\w-]+` to support both prefixes
+- `remindersListForTag()` strips both `#` and `+` prefixes when matching
+- `TaskNotesSource` uses configurable status mapping instead of hardcoded values
+- `MtnCliTask.toSyncTask()` and `TaskNotesApiTask.toSyncTask()` accept `completedStatuses` parameter
+
+---
+
 ## v3.3.0 (February 2026)
 
 ### New Features

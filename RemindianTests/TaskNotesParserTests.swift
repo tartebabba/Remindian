@@ -72,19 +72,37 @@ final class TaskNotesParserTests: XCTestCase {
     }
 
     func testStatusMapping() {
+        let config = SyncConfiguration()
+        // Default completed statuses: ["done", "completed", "cancelled"]
+
         let statusMappings: [(String, Bool)] = [
             ("todo", false),
             ("done", true),
             ("completed", true),
             ("cancelled", true),
+            ("open", false),
+            ("in-progress", false),
         ]
 
         for (status, expectedCompleted) in statusMappings {
-            // Verify the mapping logic
-            let isCompleted = status == "done" || status == "completed" || status == "cancelled"
+            let isCompleted = config.isTaskNotesStatusCompleted(status)
             XCTAssertEqual(isCompleted, expectedCompleted,
                           "Status '\(status)' should map to isCompleted=\(expectedCompleted)")
         }
+    }
+
+    func testCustomStatusMapping() {
+        let config = SyncConfiguration()
+        // Custom statuses: user has "archived" and "shipped" as completed
+        config.taskNotesCompletedStatuses = ["done", "archived", "shipped"]
+
+        XCTAssertTrue(config.isTaskNotesStatusCompleted("done"))
+        XCTAssertTrue(config.isTaskNotesStatusCompleted("archived"))
+        XCTAssertTrue(config.isTaskNotesStatusCompleted("shipped"))
+        XCTAssertTrue(config.isTaskNotesStatusCompleted("Done"))  // case-insensitive
+        XCTAssertFalse(config.isTaskNotesStatusCompleted("completed"))  // removed from list
+        XCTAssertFalse(config.isTaskNotesStatusCompleted("open"))
+        XCTAssertFalse(config.isTaskNotesStatusCompleted("in-progress"))
     }
 
     func testTagsParsing() {

@@ -61,6 +61,16 @@ class TaskNotesSource: TaskSource {
     /// Path to the mtn binary (user-configured via file picker for sandbox access)
     var mtnPath: String = ""
 
+    /// Custom status mapping (#10)
+    var completedStatuses: [String] = ["done", "completed", "cancelled"]
+    var openStatus: String = "open"
+    var doneStatus: String = "done"
+
+    /// Check if a status value represents a completed task.
+    func isStatusCompleted(_ status: String) -> Bool {
+        return completedStatuses.contains { $0.lowercased() == status.lowercased() }
+    }
+
     // MARK: - CLI Detection & Sandbox Bookmark
 
     /// Resolve the saved security-scoped bookmark for the mtn binary.
@@ -243,7 +253,7 @@ class TaskNotesSource: TaskSource {
 
         let decoder = JSONDecoder()
         let cliTasks = try decoder.decode([MtnCliTask].self, from: data)
-        let tasks = cliTasks.map { $0.toSyncTask() }
+        let tasks = cliTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses) }
 
         debugLog("[TaskNotes] CLI found \(tasks.count) tasks")
         return tasks
@@ -275,7 +285,7 @@ class TaskNotesSource: TaskSource {
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
         let dateStr = formatter.string(from: completionDate)
 
-        content = updateFrontmatterField(in: content, field: "status", value: "done")
+        content = updateFrontmatterField(in: content, field: "status", value: doneStatus)
         content = updateFrontmatterField(in: content, field: "completedDate", value: dateStr)
 
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
@@ -322,7 +332,7 @@ class TaskNotesSource: TaskSource {
             let collectionPath = resolveCollectionPath(config: config)
             let fullPath = resolveFullPath(source: source, config: config)
             FileWatcherService.shared.registerSelfModification(fullPath)
-            _ = try runMtn(args: ["update", source.filePath, "--status", "open"], collectionPath: collectionPath)
+            _ = try runMtn(args: ["update", source.filePath, "--status", openStatus], collectionPath: collectionPath)
             return
         }
 
@@ -336,7 +346,7 @@ class TaskNotesSource: TaskSource {
         try backupService.backupFile(at: fileURL)
 
         var content = try String(contentsOf: fileURL, encoding: .utf8)
-        content = updateFrontmatterField(in: content, field: "status", value: "open")
+        content = updateFrontmatterField(in: content, field: "status", value: openStatus)
         content = removeFrontmatterField(in: content, field: "completedDate")
 
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
@@ -516,7 +526,7 @@ class TaskNotesSource: TaskSource {
         // Build YAML frontmatter (mdbase-tasknotes format)
         var frontmatter = "---\n"
         frontmatter += "title: \(task.title)\n"
-        frontmatter += "status: \(task.isCompleted ? "done" : "open")\n"
+        frontmatter += "status: \(task.isCompleted ? doneStatus : openStatus)\n"
 
         let priorityStr: String
         switch task.priority {
@@ -626,7 +636,7 @@ class TaskNotesSource: TaskSource {
             throw TaskNotesError.noFrontmatter(fileURL.lastPathComponent)
         }
 
-        var status = "open"
+        var status = openStatus
         var priority: SyncTask.Priority = .none
         var dueDate: Date?
         var startDate: Date?
@@ -706,7 +716,7 @@ class TaskNotesSource: TaskSource {
             }
         }
 
-        let isCompleted = status == "done" || status == "completed" || status == "cancelled"
+        let isCompleted = isStatusCompleted(status)
         let targetList = tags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
 
         return SyncTask(
@@ -759,7 +769,7 @@ class TaskNotesSource: TaskSource {
 
         let decoder = JSONDecoder()
         let apiTasks = try decoder.decode([TaskNotesApiTask].self, from: data)
-        return apiTasks.map { $0.toSyncTask() }
+        return apiTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses) }
     }
 
     // MARK: - Frontmatter Helpers
@@ -828,12 +838,12 @@ private struct MtnCliTask: Codable {
     let dateModified: String?
     let timeEstimate: Int?
 
-    func toSyncTask() -> SyncTask {
+    func toSyncTask(completedStatuses: [String] = ["done", "completed", "cancelled"]) -> SyncTask {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
 
         let taskTitle = title ?? "Untitled"
-        let isCompleted = status == "done" || status == "completed"
+        let isCompleted = completedStatuses.contains { $0.lowercased() == (status ?? "").lowercased() }
 
         let taskPriority: SyncTask.Priority
         switch priority?.lowercased() {
@@ -880,11 +890,11 @@ private struct TaskNotesApiTask: Codable {
     let notes: String?
     let filePath: String?
 
-    func toSyncTask() -> SyncTask {
+    func toSyncTask(completedStatuses: [String] = ["done", "completed", "cancelled"]) -> SyncTask {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
 
-        let isCompleted = status == "done" || status == "completed"
+        let isCompleted = completedStatuses.contains { $0.lowercased() == (status ?? "").lowercased() }
         let taskPriority: SyncTask.Priority
         switch priority?.lowercased() {
         case "high", "urgent": taskPriority = .high

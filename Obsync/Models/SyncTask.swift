@@ -117,15 +117,15 @@ extension SyncTask {
     static func fromObsidianLine(_ line: String, filePath: String, lineNumber: Int) -> SyncTask? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
         
-        // Must start with task checkbox
-        guard trimmed.hasPrefix("- [") else { return nil }
-        
+        // Must start with a valid task checkbox: - [ ] or - [x] or - [X]
+        // This explicitly rejects wikilinks like "- [[Name]]" which start with "- [["
+        guard trimmed.hasPrefix("- [ ] ") || trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") else { return nil }
+
         // Check completion status
-        let isCompleted = trimmed.hasPrefix("- [x]") || trimmed.hasPrefix("- [X]")
-        
-        // Extract the content after checkbox
-        guard let checkboxEnd = trimmed.range(of: "] ") else { return nil }
-        var content = String(trimmed[checkboxEnd.upperBound...])
+        let isCompleted = trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ")
+
+        // Extract the content after checkbox (skip "- [x] " = 6 characters)
+        var content = String(trimmed.dropFirst(6))
         
         // Parse dates with emojis
         let dueDate = extractDate(from: &content, emoji: "📅")
@@ -169,9 +169,10 @@ extension SyncTask {
 
         // Parse tags and find target list
         // Supports hierarchical tags like #work/clients/somfy
+        // Also supports +prefix tags like +Project (#14)
         var tags: [String] = []
         var targetList: String? = nil
-        let tagRegex = try? NSRegularExpression(pattern: "#[\\w-]+(?:/[\\w-]+)*", options: [])
+        let tagRegex = try? NSRegularExpression(pattern: "[#+][\\w-]+(?:/[\\w-]+)*", options: [])
         let range = NSRange(content.startIndex..., in: content)
 
         if let matches = tagRegex?.matches(in: content, options: [], range: range) {
@@ -182,8 +183,9 @@ extension SyncTask {
 
                     // First top-level tag becomes the target list (convention)
                     // For "#work/clients/somfy", the target list is "work"
+                    // For "+Project", the target list is "Project"
                     if targetList == nil {
-                        let tagContent = String(tag.dropFirst()) // Remove #
+                        let tagContent = String(tag.dropFirst()) // Remove # or +
                         if tagContent.contains("/") {
                             targetList = String(tagContent.split(separator: "/").first ?? Substring(tagContent))
                         } else {

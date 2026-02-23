@@ -96,6 +96,26 @@ final class TaskParserTests: XCTestCase {
         XCTAssertEqual(task?.tags.count, 2)
     }
 
+    func testPlusPrefixTag() {
+        // Issue #14: Support + prefix for list mappings
+        let line = "- [ ] Work on feature +ProjectX"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNotNil(task)
+        XCTAssertTrue(task?.tags.contains("+ProjectX") ?? false, "Should detect +ProjectX as a tag")
+        XCTAssertEqual(task?.targetList, "ProjectX")
+    }
+
+    func testHashAndPlusTags() {
+        let line = "- [ ] Review docs #work +ProjectX"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNotNil(task)
+        XCTAssertEqual(task?.tags.count, 2)
+        XCTAssertTrue(task?.tags.contains("#work") ?? false)
+        XCTAssertTrue(task?.tags.contains("+ProjectX") ?? false)
+        // First tag (#work) determines the target list
+        XCTAssertEqual(task?.targetList, "work")
+    }
+
     // MARK: - Recurrence Stripping
 
     func testRecurrenceEmojiStripped() {
@@ -128,6 +148,19 @@ final class TaskParserTests: XCTestCase {
         let line = "- Just a regular bullet"
         let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
         XCTAssertNil(task)
+    }
+
+    func testWikilinkBulletNotTask() {
+        // Issue #13: List items with wikilinks should NOT be parsed as tasks
+        let line = "- [[Sarah]] coming to stay"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNil(task, "A list item starting with a wikilink should not be parsed as a task")
+    }
+
+    func testMultipleWikilinksBulletNotTask() {
+        let line = "- [[Project X]] review with [[John]]"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNil(task, "A list item with wikilinks should not be parsed as a task")
     }
 
     func testEmptyCheckbox() {

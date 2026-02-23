@@ -211,14 +211,14 @@ struct ListMappingsView: View {
             Text("Map Obsidian tags to Reminders lists")
                 .font(.headline)
 
-            Text("Tasks with #tag will sync to the mapped Reminders list")
+            Text("Tasks with #tag or +tag will sync to the mapped Reminders list")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             List {
                 ForEach(Array(syncManager.config.listMappings.enumerated()), id: \.element.id) { index, mapping in
                     HStack {
-                        Text("#\(mapping.obsidianTag)")
+                        Text(mapping.obsidianTag.hasPrefix("+") ? mapping.obsidianTag : "#\(mapping.obsidianTag)")
                             .fontWeight(.medium)
                             .foregroundColor(.accentColor)
 
@@ -245,7 +245,7 @@ struct ListMappingsView: View {
             Divider()
 
             HStack {
-                TextField("Tag (e.g., work)", text: $newTag)
+                TextField("Tag (e.g., work or +project)", text: $newTag)
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 150)
 
@@ -404,6 +404,55 @@ struct AdvancedSettingsView: View {
                     .padding(.leading, 20)
 
                     Text("Relative path within your vault where TaskNotes stores task files. Leave empty for default (vault root).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+
+                    Divider()
+                        .padding(.leading, 20)
+
+                    Text("Status Mapping")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+
+                    HStack {
+                        Text("Completed statuses:")
+                            .foregroundColor(.secondary)
+                        TextField("done, completed, cancelled", text: Binding(
+                            get: { syncManager.config.taskNotesCompletedStatuses.joined(separator: ", ") },
+                            set: { syncManager.config.taskNotesCompletedStatuses = $0.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty } }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 200)
+                    }
+                    .padding(.leading, 20)
+
+                    Text("Comma-separated list of status values that mean \"completed\". Tasks with these statuses will sync as done.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+
+                    HStack(spacing: 16) {
+                        HStack {
+                            Text("Open status:")
+                                .foregroundColor(.secondary)
+                            TextField("open", text: $syncManager.config.taskNotesOpenStatus)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                        }
+                        HStack {
+                            Text("Done status:")
+                                .foregroundColor(.secondary)
+                            TextField("done", text: $syncManager.config.taskNotesDoneStatus)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 80)
+                        }
+                    }
+                    .padding(.leading, 20)
+
+                    Text("Status values written when marking tasks incomplete/complete from Reminders.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.leading, 20)
