@@ -13,6 +13,12 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 ### Bug Fixes
 - Fixed: List items with wikilinks (e.g., `- [[Sarah]] coming to stay`) were incorrectly parsed as tasks and created Reminders. Now only proper checkbox items (`- [ ]` / `- [x]`) are recognized (#13)
 
+### Improvements (cherry-picked from [PR #8](https://github.com/Santofer/Remindian/pull/8) by [@tparsons9](https://github.com/tparsons9))
+- **Flexible API response parsing** — HTTP API now supports wrapped responses (`{ success, data: [...] }`) and collection envelopes (`{ data: { tasks: [...] } }`), improving compatibility with different TaskNotes plugin versions
+- **Better HTTP error handling** — API calls now check HTTP status codes and provide detailed error messages with response snippets
+- **Smarter notification permissions** — Checks authorization status before prompting; logs detailed errors for denied or failed permission requests
+- **Source/destination refresh before sync** — Ensures latest config settings (API URL, status mapping, etc.) are always used
+
 ### Technical Changes
 - `SyncConfiguration` gains `taskNotesCompletedStatuses`, `taskNotesOpenStatus`, `taskNotesDoneStatus` fields
 - Task checkbox detection now uses strict prefix matching (`- [ ] ` or `- [x] `) instead of loose `- [` prefix
@@ -20,6 +26,9 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 - `remindersListForTag()` strips both `#` and `+` prefixes when matching
 - `TaskNotesSource` uses configurable status mapping instead of hardcoded values
 - `MtnCliTask.toSyncTask()` and `TaskNotesApiTask.toSyncTask()` accept `completedStatuses` parameter
+- `TaskNotesApiEnvelope` and `TaskNotesApiTaskCollection` models added for flexible JSON decoding
+- `NotificationService.requestPermission()` checks `getNotificationSettings` before requesting
+- `SyncManager.performSync()` calls `updateSourceAndDestination()` to pick up config changes
 
 ---
 

@@ -739,21 +739,67 @@ class TaskNotesSource: TaskSource {
 
     // MARK: - HTTP API
 
+    private func responseSnippet(from data: Data) -> String {
+        guard let body = String(data: data, encoding: .utf8) else { return "<non-UTF8 response>" }
+        let compact = body.replacingOccurrences(of: "\n", with: " ")
+        return String(compact.prefix(240))
+    }
+
+    /// Decode API tasks from various response formats:
+    /// - Raw array: `[{...}, {...}]`
+    /// - Envelope: `{ success: true, data: [...] }`
+    /// - Collection: `{ success: true, data: { tasks: [...] } }` (also `items`, `results`)
+    private func decodeApiTasks(from data: Data) throws -> [TaskNotesApiTask] {
+        let decoder = JSONDecoder()
+
+        // Try raw array first (most common)
+        if let directArray = try? decoder.decode([TaskNotesApiTask].self, from: data) {
+            return directArray
+        }
+
+        // Try { success, data: [...] } envelope
+        if let envelope = try? decoder.decode(TaskNotesApiEnvelope<[TaskNotesApiTask]>.self, from: data) {
+            if envelope.success == false {
+                throw TaskNotesError.apiError(envelope.error ?? envelope.message ?? "API returned success=false")
+            }
+            if let tasks = envelope.data {
+                return tasks
+            }
+        }
+
+        // Try { success, data: { tasks/items/results: [...] } } envelope
+        if let envelope = try? decoder.decode(TaskNotesApiEnvelope<TaskNotesApiTaskCollection>.self, from: data) {
+            if envelope.success == false {
+                throw TaskNotesError.apiError(envelope.error ?? envelope.message ?? "API returned success=false")
+            }
+            if let payload = envelope.data {
+                if let tasks = payload.tasks { return tasks }
+                if let tasks = payload.items { return tasks }
+                if let tasks = payload.results { return tasks }
+            }
+        }
+
+        throw TaskNotesError.apiError("Unexpected /api/tasks response format: \(responseSnippet(from: data))")
+    }
+
     private func scanTasksViaApi() throws -> [SyncTask] {
         guard let url = URL(string: "\(apiBaseUrl)/api/tasks") else {
             throw TaskNotesError.invalidApiUrl
         }
 
         var request = URLRequest(url: url)
-        request.timeoutInterval = 5
+        request.timeoutInterval = 8
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
 
         let semaphore = DispatchSemaphore(value: 0)
         var responseData: Data?
         var responseError: Error?
+        var httpStatusCode: Int?
 
-        let task = URLSession.shared.dataTask(with: request) { data, _, error in
+        let task = URLSession.shared.dataTask(with: request) { data, response, error in
             responseData = data
             responseError = error
+            httpStatusCode = (response as? HTTPURLResponse)?.statusCode
             semaphore.signal()
         }
         task.resume()
@@ -767,8 +813,11 @@ class TaskNotesSource: TaskSource {
             throw TaskNotesError.apiError("No data received")
         }
 
-        let decoder = JSONDecoder()
-        let apiTasks = try decoder.decode([TaskNotesApiTask].self, from: data)
+        if let statusCode = httpStatusCode, !(200...299).contains(statusCode) {
+            throw TaskNotesError.apiError("HTTP \(statusCode): \(responseSnippet(from: data))")
+        }
+
+        let apiTasks = try decodeApiTasks(from: data)
         return apiTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses) }
     }
 
@@ -919,6 +968,21 @@ private struct TaskNotesApiTask: Codable {
             remindersId: id
         )
     }
+}
+
+// MARK: - API Response Envelope Models (supports wrapped responses)
+
+private struct TaskNotesApiEnvelope<T: Decodable>: Decodable {
+    let success: Bool?
+    let data: T?
+    let error: String?
+    let message: String?
+}
+
+private struct TaskNotesApiTaskCollection: Decodable {
+    let tasks: [TaskNotesApiTask]?
+    let items: [TaskNotesApiTask]?
+    let results: [TaskNotesApiTask]?
 }
 
 // MARK: - Errors

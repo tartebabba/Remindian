@@ -182,6 +182,8 @@ class SyncManager: ObservableObject {
             debugLog("[SyncManager] Skipped: already syncing")
             return
         }
+        // Ensure source/destination reflect latest config before each sync
+        updateSourceAndDestination()
         guard hasRemindersAccess else {
             showErrorMessage("No access to Reminders. Please grant permission in System Settings.")
             return
