@@ -20,40 +20,46 @@ A native macOS menu-bar app that syncs your tasks between [Obsidian](https://obs
 
 Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) plugin format and the [TaskNotes](https://github.com/nicolo/obsidian-tasknotes) plugin — and two destinations — Apple Reminders and Things 3. Mix and match to build your ideal workflow.
 
-**Your vault is the source of truth.** Tasks flow from Obsidian into your chosen destination. Completion status, due dates, start dates, and priority can optionally be written back using surgical, metadata-preserving edits.
+**Your vault is the source of truth.** Tasks flow from Obsidian into your chosen destination. Completion status, due dates, start dates, priority, and tags can optionally be written back using surgical, metadata-preserving edits.
 
 ![Remindian main window](screenshots/main-window.png)
 
 ## Download
 
-**[Download the latest beta](https://github.com/Santofer/Remindian/releases/latest)** — macOS 13.0+ (Ventura or later)
+**[Download Remindian v3.5.1](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
 
-> Since the app is not notarized, right-click the app and select **Open** on first launch to bypass Gatekeeper.
+> Since the app is not notarized, right-click the app and select **Open** on first launch to bypass Gatekeeper. Remindian includes a built-in auto-updater that checks for new versions on launch and every 24 hours.
 
 ## Features
 
 ### Task Sources
 - **Obsidian Tasks** — Scans your vault for tasks in the Tasks plugin format (`- [ ] task 📅 2024-01-20 #tag`)
-- **TaskNotes** — Reads TaskNotes plugin files (one `.md` file per task with YAML frontmatter)
+- **TaskNotes** — Reads TaskNotes plugin files (one `.md` file per task with YAML frontmatter). Supports CLI, Direct Files, and HTTP API integration modes
 
 ### Task Destinations
 - **Apple Reminders** — Syncs to any Reminders list via EventKit
 - **Things 3** — Syncs to Things 3 via AppleScript (read) and URL scheme (write)
 
 ### Sync Features
-- **Two-way sync** — Tasks flow from your source to your destination; completions, due dates, start dates, and priority changes sync back
+- **Two-way sync** — Tasks flow from your source to your destination; completions, due dates, start dates, priority, and tag changes sync back
 - **Surgical file edits** — Never reconstructs task lines; preserves recurrence markers, tags, and all metadata
 - **Recurrence support** — Completes recurring tasks and creates the next occurrence automatically
-- **Tag-based list mapping** — `#work` tasks go to your "Work" list, `#personal` to "Personal", etc.
-- **Folder filtering** — Whitelist specific folders to scan, or exclude folders you don't want synced
+- **Tag-based list mapping** — `#work` or `+work` tasks go to your "Work" list, `#personal` to "Personal", etc.
+- **Project/context list mapping** — Use the TaskNotes `project` or `context` field as the Reminders list instead of tags (supports wikilinks)
+- **Configurable field mapping** — Remap YAML frontmatter field names to match your TaskNotes setup (e.g., `deadline` instead of `due`)
+- **Custom status mapping** — Define which TaskNotes status values mean "completed" (e.g., `done`, `shipped`, `archived`)
+- **Folder filtering** — Whitelist specific vault folders to scan, or exclude folders you don't want synced
+- **Reminders list filtering** — Whitelist or blacklist specific Reminders lists for sync
+- **GoodTask tag writeback** — Tag changes made in Reminders (e.g., via GoodTask's Kanban board) sync back to Obsidian `#tags`
 - **Cross-file deduplication** — Detects duplicate tasks across files and syncs only one copy
 - **New task writeback** — Tasks created in Reminders/Things can be written back to an Obsidian inbox file
 - **Real-time sync** — File watcher triggers sync on vault changes (with self-change filtering to prevent loops)
 - **Safety abort** — Sync aborts if task count drops dramatically (protects against vault unmounted or scan failures)
 - **Dry run mode** — Preview what would change without making any actual modifications
 - **Automatic backups** — Every Obsidian file is backed up before modification
+- **Auto-updater** — Checks for new versions on launch and every 24 hours, with update notifications in the menu bar
 - **Onboarding wizard** — Guided setup to choose your source, destination, vault path, and configuration
-- **macOS native** — Built with SwiftUI, runs in the menu bar, no external dependencies
+- **macOS native** — Built with SwiftUI, runs in the menu bar, Universal Binary, no external dependencies
 
 ## Quick Start
 
@@ -68,9 +74,9 @@ Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/t
 Open **Settings** from the menu bar icon to configure:
 
 - **Source & Destination** — Choose your task source (Obsidian Tasks or TaskNotes) and sync destination (Apple Reminders or Things 3)
-- **General** — Vault path, sync interval, writeback toggles, notifications, default list
-- **List Mappings** — Map Obsidian `#tags` to specific Reminders/Things lists
-- **Advanced** — Folder whitelist/exclusions, dry run mode, sync state reset, backup access
+- **General** — Vault path, sync interval, writeback toggles (completion, due date, start date, priority, tags), notifications, default list, launch at login
+- **List Mappings** — Map Obsidian `#tags` or `+tags` to specific Reminders/Things lists
+- **Advanced** — TaskNotes integration mode (CLI/Files/HTTP), field mapping, status mapping, list field source (tags/project/context), folder whitelist/exclusions, Reminders list filtering, dry run mode, sync state reset, backup access
 
 ## How It Works
 
@@ -86,15 +92,17 @@ Remindian scans your Obsidian vault for tasks in the [Tasks plugin](https://publ
 
 ### With TaskNotes
 
-Reads one `.md` file per task with YAML frontmatter:
+Reads one `.md` file per task with YAML frontmatter. Field names are fully configurable:
 
 ```markdown
 ---
+title: My task
 status: open
 priority: high
 due: 2024-01-20
-start: 2024-01-15
+scheduled: 2024-01-15
 tags: [work]
+project: "[[My Project]]"
 ---
 # My task
 Description of the task...
@@ -113,6 +121,8 @@ open ObsidianRemindersSync.xcodeproj
 ```
 
 **Requirements:** macOS 13.0+, Xcode 15.0+
+
+The project builds a Universal Binary (Apple Silicon + Intel) by default.
 
 ## Transparency
 
