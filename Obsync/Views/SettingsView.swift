@@ -23,7 +23,7 @@ struct SettingsView: View {
                 }
                 .tag(2)
         }
-        .frame(width: 550, height: 580)
+        .frame(minWidth: 500, idealWidth: 600, minHeight: 500, idealHeight: 650)
         .padding()
     }
 }
@@ -95,6 +95,9 @@ struct GeneralSettingsView: View {
                     Toggle("Sync priority changes back to Obsidian", isOn: $syncManager.config.enablePriorityWriteback)
                         .help("When enabled, changing priority in Reminders will update the priority emoji (⏫/🔼/🔽) in Obsidian")
 
+                    Toggle("Sync tag changes back to Obsidian", isOn: $syncManager.config.enableTagWriteback)
+                        .help("When enabled, tag changes in Reminders (e.g., from GoodTask) will update #tags in Obsidian")
+
                     Toggle("Write new Reminders tasks to Obsidian inbox", isOn: $syncManager.config.enableNewTaskWriteback)
                         .help("When enabled, new tasks created in Reminders will be appended to an inbox file in your vault")
 
@@ -109,7 +112,7 @@ struct GeneralSettingsView: View {
                         .padding(.leading, 20)
                     }
 
-                    if syncManager.config.enableCompletionWriteback || syncManager.config.enableDueDateWriteback || syncManager.config.enableStartDateWriteback || syncManager.config.enablePriorityWriteback || syncManager.config.enableNewTaskWriteback {
+                    if syncManager.config.enableCompletionWriteback || syncManager.config.enableDueDateWriteback || syncManager.config.enableStartDateWriteback || syncManager.config.enablePriorityWriteback || syncManager.config.enableTagWriteback || syncManager.config.enableNewTaskWriteback {
                         HStack(spacing: 4) {
                             Image(systemName: "exclamationmark.triangle")
                                 .foregroundColor(.orange)
@@ -283,6 +286,7 @@ struct AdvancedSettingsView: View {
     @State private var showResetConfirmation = false
 
     var body: some View {
+        ScrollView {
         Form {
             Section {
                 Picker("Task Source", selection: $syncManager.config.taskSourceType) {
@@ -456,6 +460,106 @@ struct AdvancedSettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                         .padding(.leading, 20)
+
+                    Divider()
+                        .padding(.leading, 20)
+
+                    Text("Field Mapping")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+
+                    Group {
+                        HStack(spacing: 8) {
+                            LabeledContent {
+                                TextField("title", text: $syncManager.config.taskNotesFieldMapping.title)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Title:").foregroundColor(.secondary) }
+                            LabeledContent {
+                                TextField("status", text: $syncManager.config.taskNotesFieldMapping.status)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Status:").foregroundColor(.secondary) }
+                            LabeledContent {
+                                TextField("priority", text: $syncManager.config.taskNotesFieldMapping.priority)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Priority:").foregroundColor(.secondary) }
+                        }
+                        .padding(.leading, 20)
+
+                        HStack(spacing: 8) {
+                            LabeledContent {
+                                TextField("due", text: $syncManager.config.taskNotesFieldMapping.due)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Due:").foregroundColor(.secondary) }
+                            LabeledContent {
+                                TextField("scheduled", text: $syncManager.config.taskNotesFieldMapping.scheduled)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Start:").foregroundColor(.secondary) }
+                            LabeledContent {
+                                TextField("completedDate", text: $syncManager.config.taskNotesFieldMapping.completedDate)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Completed:").foregroundColor(.secondary) }
+                        }
+                        .padding(.leading, 20)
+
+                        HStack(spacing: 8) {
+                            LabeledContent {
+                                TextField("tags", text: $syncManager.config.taskNotesFieldMapping.tags)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Tags:").foregroundColor(.secondary) }
+                            LabeledContent {
+                                TextField("project", text: $syncManager.config.taskNotesFieldMapping.project)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Project:").foregroundColor(.secondary) }
+                            LabeledContent {
+                                TextField("context", text: $syncManager.config.taskNotesFieldMapping.context)
+                                    .textFieldStyle(.roundedBorder)
+                                    .frame(width: 90)
+                            } label: { Text("Context:").foregroundColor(.secondary) }
+                        }
+                        .padding(.leading, 20)
+                    }
+
+                    Text("Map your YAML frontmatter field names to Remindian properties. Change these if your TaskNotes uses custom field names.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+
+                    Divider()
+                        .padding(.leading, 20)
+
+                    Text("List/Folder Source")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
+
+                    HStack {
+                        Text("Reminders list from:")
+                            .foregroundColor(.secondary)
+                        Picker("", selection: $syncManager.config.taskNotesListField) {
+                            Text("Tags").tag("tags")
+                            Text("Project").tag("project")
+                            Text("Context").tag("context")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 220)
+                    }
+                    .padding(.leading, 20)
+
+                    Text("Which TaskNotes field determines the Reminders list. Supports wikilinks (e.g., [[My Project]] → My Project).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 20)
                 }
             } header: {
                 Text("Source & Destination")
@@ -559,6 +663,20 @@ struct AdvancedSettingsView: View {
                 Text("Comma-separated Reminders list names. If set, only tasks in these lists will be synced. Leave empty to sync all lists.")
                     .font(.caption)
                     .foregroundColor(.secondary)
+
+                LabeledContent {
+                    TextField("e.g. Groceries, Shared", text: Binding(
+                        get: { syncManager.config.excludedRemindersLists.joined(separator: ", ") },
+                        set: { syncManager.config.excludedRemindersLists = $0.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty } }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                } label: {
+                    Text("Exclude lists")
+                }
+
+                Text("Comma-separated Reminders list names to always exclude. Easier to manage than the whitelist when you only want to skip a few lists.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             } header: {
                 Text("Reminders List Filtering")
             }
@@ -591,6 +709,7 @@ struct AdvancedSettingsView: View {
             } header: {
                 Text("Recovery")
             }
+        }
         }
         .padding()
         .alert("Reset Sync State?", isPresented: $showResetConfirmation) {

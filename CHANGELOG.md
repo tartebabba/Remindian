@@ -4,6 +4,32 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v3.5.0 (February 2026)
+
+### New Features
+- **Configurable field mapping for TaskNotes** — Map your YAML frontmatter field names to Remindian properties. If your TaskNotes uses custom fields (e.g., `deadline` instead of `due`, `importance` instead of `priority`), configure the mapping in Settings > Advanced > TaskNotes > Field Mapping (#19)
+- **Project/context as Reminders list** — Choose which TaskNotes field determines the Reminders list/folder: `tags` (default), `project`, or `context`. Supports wikilinks (e.g., `project: [[My Project]]` → "My Project" list). Configurable in Settings > Advanced > TaskNotes > List/Folder Source (#20)
+- **GoodTask tag writeback** — Tag changes in Reminders (e.g., via GoodTask's Kanban board) sync back to Obsidian `#tags`. Enable in Settings > General > Sync tag changes (#17)
+- **Exclude Reminders lists** — Blacklist specific Reminders lists from sync (e.g., Groceries, Shared). Easier to manage than the whitelist when you only want to skip a few lists. Configure in Settings > Advanced > Reminders List Filtering (#21)
+
+### Bug Fixes
+- Fixed: Task completed in Obsidian (`- [x]`) was being reverted to incomplete on next sync when Reminders still showed it as incomplete. Source of truth (Obsidian) now correctly wins — Reminders is updated to match (#16)
+- Fixed: Settings window too small and couldn't be resized — now resizable with scroll support in Advanced tab (#18)
+
+### Technical Changes
+- `TaskNotesFieldMapping` struct for configurable YAML field names (title, status, priority, due, scheduled, completedDate, tags, project, context)
+- `SyncConfiguration` gains `taskNotesFieldMapping`, `taskNotesListField`, `excludedRemindersLists`, `enableTagWriteback` fields
+- `TaskNotesSource` uses `fieldMapping` for all YAML read/write operations instead of hardcoded field names
+- `TaskNotesSource` uses `listField` to determine `targetList` from project/context/tags/custom field
+- `MtnCliTask` and `TaskNotesApiTask` gain `project`/`context` fields and `listField` parameter
+- `stripWikilinks()` helper removes `[[` and `]]` brackets from field values
+- `SyncEngine` completion sync direction fixed: when `oTask.isCompleted && !rTask.isCompleted`, sets `taskForReminders.isCompleted = true`
+- `SyncEngine` filters excluded Reminders lists in both Step 2 (fetch) and Step 5 (creation)
+- `MetadataChanges.newTags` enables tag writeback; `applyTagChange()` added to `ObsidianService`
+- Settings window uses `minWidth`/`minHeight` with `idealWidth`/`idealHeight` for resizable layout
+
+---
+
 ## v3.4.0 (February 2026)
 
 ### New Features

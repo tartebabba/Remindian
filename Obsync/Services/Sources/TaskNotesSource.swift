@@ -66,6 +66,12 @@ class TaskNotesSource: TaskSource {
     var openStatus: String = "open"
     var doneStatus: String = "done"
 
+    /// Configurable field name mapping (#19)
+    var fieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping()
+
+    /// Which field determines Reminders list (#20): "tags", "project", "context", or custom
+    var listField: String = "tags"
+
     /// Check if a status value represents a completed task.
     func isStatusCompleted(_ status: String) -> Bool {
         return completedStatuses.contains { $0.lowercased() == status.lowercased() }
@@ -253,7 +259,7 @@ class TaskNotesSource: TaskSource {
 
         let decoder = JSONDecoder()
         let cliTasks = try decoder.decode([MtnCliTask].self, from: data)
-        let tasks = cliTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses) }
+        let tasks = cliTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses, listField: self.listField) }
 
         debugLog("[TaskNotes] CLI found \(tasks.count) tasks")
         return tasks
@@ -285,8 +291,8 @@ class TaskNotesSource: TaskSource {
         formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
         let dateStr = formatter.string(from: completionDate)
 
-        content = updateFrontmatterField(in: content, field: "status", value: doneStatus)
-        content = updateFrontmatterField(in: content, field: "completedDate", value: dateStr)
+        content = updateFrontmatterField(in: content, field: fieldMapping.status, value: doneStatus)
+        content = updateFrontmatterField(in: content, field: fieldMapping.completedDate, value: dateStr)
 
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
 
@@ -294,8 +300,8 @@ class TaskNotesSource: TaskSource {
             action: "taskNotesComplete",
             filePath: source.filePath,
             lineNumber: 0,
-            beforeLine: "status: open",
-            afterLine: "status: done"
+            beforeLine: "\(fieldMapping.status): \(openStatus)",
+            afterLine: "\(fieldMapping.status): \(doneStatus)"
         )
 
         return 0
@@ -346,8 +352,8 @@ class TaskNotesSource: TaskSource {
         try backupService.backupFile(at: fileURL)
 
         var content = try String(contentsOf: fileURL, encoding: .utf8)
-        content = updateFrontmatterField(in: content, field: "status", value: openStatus)
-        content = removeFrontmatterField(in: content, field: "completedDate")
+        content = updateFrontmatterField(in: content, field: fieldMapping.status, value: openStatus)
+        content = removeFrontmatterField(in: content, field: fieldMapping.completedDate)
 
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
     }
@@ -377,17 +383,17 @@ class TaskNotesSource: TaskSource {
 
         if let dueDateChange = changes.newDueDate {
             if let date = dueDateChange {
-                content = updateFrontmatterField(in: content, field: "due", value: dateFormatter.string(from: date))
+                content = updateFrontmatterField(in: content, field: fieldMapping.due, value: dateFormatter.string(from: date))
             } else {
-                content = removeFrontmatterField(in: content, field: "due")
+                content = removeFrontmatterField(in: content, field: fieldMapping.due)
             }
         }
 
         if let startDateChange = changes.newStartDate {
             if let date = startDateChange {
-                content = updateFrontmatterField(in: content, field: "scheduled", value: dateFormatter.string(from: date))
+                content = updateFrontmatterField(in: content, field: fieldMapping.scheduled, value: dateFormatter.string(from: date))
             } else {
-                content = removeFrontmatterField(in: content, field: "scheduled")
+                content = removeFrontmatterField(in: content, field: fieldMapping.scheduled)
             }
         }
 
@@ -399,7 +405,7 @@ class TaskNotesSource: TaskSource {
             case .low: priorityStr = "low"
             case .none: priorityStr = "normal"
             }
-            content = updateFrontmatterField(in: content, field: "priority", value: priorityStr)
+            content = updateFrontmatterField(in: content, field: fieldMapping.priority, value: priorityStr)
         }
 
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
@@ -523,10 +529,11 @@ class TaskNotesSource: TaskSource {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
 
-        // Build YAML frontmatter (mdbase-tasknotes format)
+        // Build YAML frontmatter using mapped field names (#19)
+        let fm = fieldMapping
         var frontmatter = "---\n"
-        frontmatter += "title: \(task.title)\n"
-        frontmatter += "status: \(task.isCompleted ? doneStatus : openStatus)\n"
+        frontmatter += "\(fm.title): \(task.title)\n"
+        frontmatter += "\(fm.status): \(task.isCompleted ? doneStatus : openStatus)\n"
 
         let priorityStr: String
         switch task.priority {
@@ -535,28 +542,40 @@ class TaskNotesSource: TaskSource {
         case .low: priorityStr = "low"
         case .none: priorityStr = "normal"
         }
-        frontmatter += "priority: \(priorityStr)\n"
+        frontmatter += "\(fm.priority): \(priorityStr)\n"
 
         if let dueDate = task.dueDate {
-            frontmatter += "due: \(dateFormatter.string(from: dueDate))\n"
+            frontmatter += "\(fm.due): \(dateFormatter.string(from: dueDate))\n"
         }
 
         if let startDate = task.startDate {
-            frontmatter += "scheduled: \(dateFormatter.string(from: startDate))\n"
+            frontmatter += "\(fm.scheduled): \(dateFormatter.string(from: startDate))\n"
         }
 
         if !task.tags.isEmpty {
             let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-            frontmatter += "tags:\n"
+            frontmatter += "\(fm.tags):\n"
             for tag in tagNames {
                 frontmatter += "  - \(tag)\n"
+            }
+        }
+
+        // Write list field value when using project/context (#20)
+        if let targetList = task.targetList, !targetList.isEmpty {
+            let lf = listField.lowercased()
+            if lf == "project" {
+                frontmatter += "\(fm.project): \(targetList)\n"
+            } else if lf == "context" {
+                frontmatter += "\(fm.context): \(targetList)\n"
+            } else if lf != "tags" {
+                frontmatter += "\(listField): \(targetList)\n"
             }
         }
 
         frontmatter += "dateCreated: \(dateFormatter.string(from: Date()))\n"
 
         if task.isCompleted, let completedDate = task.completedDate {
-            frontmatter += "completedDate: \(dateFormatter.string(from: completedDate))\n"
+            frontmatter += "\(fm.completedDate): \(dateFormatter.string(from: completedDate))\n"
         }
 
         frontmatter += "---\n"
@@ -625,6 +644,14 @@ class TaskNotesSource: TaskSource {
         return tasks
     }
 
+    /// Strip wikilink brackets from a value (e.g., "[[My Project]]" → "My Project").
+    private func stripWikilinks(_ value: String) -> String {
+        var result = value
+        result = result.replacingOccurrences(of: "[[", with: "")
+        result = result.replacingOccurrences(of: "]]", with: "")
+        return result.trimmingCharacters(in: .whitespaces)
+    }
+
     /// Parse a single TaskNotes .md file into a SyncTask.
     private func parseTaskNotesFile(_ fileURL: URL, vaultPath: String) throws -> SyncTask {
         let content = try String(contentsOf: fileURL, encoding: .utf8)
@@ -643,14 +670,19 @@ class TaskNotesSource: TaskSource {
         var completedDate: Date?
         var tags: [String] = []
         var title = fileURL.deletingPathExtension().lastPathComponent
+        var projectValue: String?
+        var contextValue: String?
+        var customFieldValues: [String: String] = [:]  // For custom list field lookup
 
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
         let isoFormatter = DateFormatter()
         isoFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
 
+        let fm = fieldMapping
         var inFrontmatter = false
         var frontmatterEnded = false
+        var lastArrayKey: String?  // Track which key a YAML array item belongs to
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -668,14 +700,25 @@ class TaskNotesSource: TaskSource {
             if inFrontmatter && !frontmatterEnded {
                 // Parse YAML fields
                 if let colonIndex = trimmed.firstIndex(of: ":") {
-                    let key = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespaces).lowercased()
+                    let key = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespaces)
                     let value = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+                    let keyLower = key.lowercased()
 
-                    switch key {
+                    // Store all field values for custom list field lookup (#20)
+                    if !value.isEmpty {
+                        customFieldValues[keyLower] = value
+                    }
+
+                    // Use field mapping to identify which property this field represents (#19)
+                    let property = fm.fieldLookup[keyLower]
+
+                    switch property {
                     case "title":
                         if !value.isEmpty { title = value }
+                        lastArrayKey = nil
                     case "status":
                         status = value
+                        lastArrayKey = nil
                     case "priority":
                         switch value.lowercased() {
                         case "high", "urgent": priority = .high
@@ -683,12 +726,16 @@ class TaskNotesSource: TaskSource {
                         case "low": priority = .low
                         default: priority = .none
                         }
+                        lastArrayKey = nil
                     case "due":
                         dueDate = dateFormatter.date(from: value)
-                    case "scheduled", "start":
+                        lastArrayKey = nil
+                    case "scheduled":
                         startDate = dateFormatter.date(from: value)
-                    case "completeddate", "completed":
+                        lastArrayKey = nil
+                    case "completedDate":
                         completedDate = isoFormatter.date(from: value) ?? dateFormatter.date(from: value)
+                        lastArrayKey = nil
                     case "tags":
                         // Parse YAML inline array: [tag1, tag2]
                         let cleaned = value
@@ -697,16 +744,33 @@ class TaskNotesSource: TaskSource {
                         if !cleaned.isEmpty {
                             tags = cleaned.components(separatedBy: ",").map { "#\($0.trimmingCharacters(in: .whitespaces))" }
                         }
+                        lastArrayKey = "tags"
+                    case "project":
+                        projectValue = stripWikilinks(value)
+                        lastArrayKey = nil
+                    case "context":
+                        contextValue = stripWikilinks(value)
+                        lastArrayKey = nil
                     default:
-                        break
+                        // Also check for legacy field names that aren't in the mapping
+                        switch keyLower {
+                        case "start":
+                            startDate = dateFormatter.date(from: value)
+                        case "completed":
+                            completedDate = isoFormatter.date(from: value) ?? dateFormatter.date(from: value)
+                        default:
+                            break
+                        }
+                        lastArrayKey = nil
                     }
-                } else if trimmed.hasPrefix("- ") && !tags.isEmpty {
+                } else if trimmed.hasPrefix("- ") && lastArrayKey == "tags" {
                     // YAML multi-line array item (under tags:)
-                    // This is a simplification — only works right after tags:
                     let tagValue = String(trimmed.dropFirst(2)).trimmingCharacters(in: .whitespaces)
                     if !tagValue.isEmpty {
                         tags.append("#\(tagValue)")
                     }
+                } else {
+                    lastArrayKey = nil
                 }
             }
 
@@ -717,7 +781,24 @@ class TaskNotesSource: TaskSource {
         }
 
         let isCompleted = isStatusCompleted(status)
-        let targetList = tags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+
+        // Determine target list based on listField setting (#20)
+        let targetList: String?
+        switch listField.lowercased() {
+        case "project":
+            targetList = projectValue
+        case "context":
+            targetList = contextValue
+        case "tags":
+            targetList = tags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+        default:
+            // Custom field name — look it up in parsed values
+            if let customValue = customFieldValues[listField.lowercased()], !customValue.isEmpty {
+                targetList = stripWikilinks(customValue)
+            } else {
+                targetList = tags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+            }
+        }
 
         return SyncTask(
             title: title,
@@ -818,7 +899,7 @@ class TaskNotesSource: TaskSource {
         }
 
         let apiTasks = try decodeApiTasks(from: data)
-        return apiTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses) }
+        return apiTasks.map { $0.toSyncTask(completedStatuses: self.completedStatuses, listField: self.listField) }
     }
 
     // MARK: - Frontmatter Helpers
@@ -882,12 +963,13 @@ private struct MtnCliTask: Codable {
     let completedDate: String?
     let tags: [String]?
     let contexts: [String]?
+    let project: String?
     let path: String?
     let dateCreated: String?
     let dateModified: String?
     let timeEstimate: Int?
 
-    func toSyncTask(completedStatuses: [String] = ["done", "completed", "cancelled"]) -> SyncTask {
+    func toSyncTask(completedStatuses: [String] = ["done", "completed", "cancelled"], listField: String = "tags") -> SyncTask {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
 
@@ -905,6 +987,17 @@ private struct MtnCliTask: Codable {
         let taskTags = (tags ?? []).map { "#\($0)" }
         let relativePath = path ?? "/tasks/\(taskTitle.lowercased().replacingOccurrences(of: " ", with: "-")).md"
 
+        // Determine target list based on listField (#20)
+        let targetList: String?
+        switch listField.lowercased() {
+        case "project":
+            targetList = project?.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: "").trimmingCharacters(in: .whitespaces)
+        case "context":
+            targetList = contexts?.first?.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: "").trimmingCharacters(in: .whitespaces)
+        default:
+            targetList = taskTags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+        }
+
         return SyncTask(
             title: taskTitle,
             isCompleted: isCompleted,
@@ -913,7 +1006,7 @@ private struct MtnCliTask: Codable {
             startDate: scheduled.flatMap { dateFormatter.date(from: $0) },
             completedDate: completedDate.flatMap { dateFormatter.date(from: $0) },
             tags: taskTags,
-            targetList: taskTags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 },
+            targetList: targetList,
             obsidianSource: SyncTask.ObsidianSource(
                 filePath: relativePath,
                 lineNumber: 1,
@@ -936,10 +1029,12 @@ private struct TaskNotesApiTask: Codable {
     let start: String?
     let completed: String?
     let tags: [String]?
+    let project: String?
+    let context: String?
     let notes: String?
     let filePath: String?
 
-    func toSyncTask(completedStatuses: [String] = ["done", "completed", "cancelled"]) -> SyncTask {
+    func toSyncTask(completedStatuses: [String] = ["done", "completed", "cancelled"], listField: String = "tags") -> SyncTask {
         let dateFormatter = DateFormatter()
         dateFormatter.dateFormat = "yyyy-MM-dd"
 
@@ -954,6 +1049,17 @@ private struct TaskNotesApiTask: Codable {
 
         let taskTags = (tags ?? []).map { "#\($0)" }
 
+        // Determine target list based on listField (#20)
+        let targetList: String?
+        switch listField.lowercased() {
+        case "project":
+            targetList = project?.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: "").trimmingCharacters(in: .whitespaces)
+        case "context":
+            targetList = context?.replacingOccurrences(of: "[[", with: "").replacingOccurrences(of: "]]", with: "").trimmingCharacters(in: .whitespaces)
+        default:
+            targetList = taskTags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+        }
+
         return SyncTask(
             title: title,
             isCompleted: isCompleted,
@@ -962,7 +1068,7 @@ private struct TaskNotesApiTask: Codable {
             startDate: (scheduled ?? start).flatMap { dateFormatter.date(from: $0) },
             completedDate: completed.flatMap { dateFormatter.date(from: $0) },
             tags: taskTags,
-            targetList: taskTags.first.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 },
+            targetList: targetList,
             notes: notes,
             obsidianSource: filePath.map { SyncTask.ObsidianSource(filePath: $0, lineNumber: 1, originalLine: "# \(title)") },
             remindersId: id

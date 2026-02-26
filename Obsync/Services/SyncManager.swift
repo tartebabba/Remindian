@@ -92,6 +92,9 @@ class SyncManager: ObservableObject {
                 source.completedStatuses = config.taskNotesCompletedStatuses
                 source.openStatus = config.taskNotesOpenStatus
                 source.doneStatus = config.taskNotesDoneStatus
+                // Field mapping (#19) and list field (#20)
+                source.fieldMapping = config.taskNotesFieldMapping
+                source.listField = config.taskNotesListField
             }
             return source
         }

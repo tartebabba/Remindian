@@ -430,9 +430,10 @@ class ObsidianService {
         var newDueDate: Date?? = nil    // nil = no change, .some(nil) = remove, .some(date) = set
         var newStartDate: Date?? = nil
         var newPriority: SyncTask.Priority? = nil  // nil = no change
+        var newTags: [String]? = nil  // nil = no change, [] = remove all, ["#tag"] = set
 
         var hasChanges: Bool {
-            return newDueDate != nil || newStartDate != nil || newPriority != nil
+            return newDueDate != nil || newStartDate != nil || newPriority != nil || newTags != nil
         }
     }
 
@@ -495,6 +496,11 @@ class ObsidianService {
         // Apply priority change
         if let newPriority = changes.newPriority {
             newLine = applyPriorityChange(to: newLine, newPriority: newPriority)
+        }
+
+        // Apply tag changes (#17 — GoodTask tag writeback)
+        if let newTags = changes.newTags {
+            newLine = applyTagChange(to: newLine, newTags: newTags)
         }
 
         // Trim trailing whitespace only (not internal spacing)
@@ -594,6 +600,48 @@ class ObsidianService {
                 newLine = prefix + " " + priorityStr + " " + suffix
             } else {
                 newLine = newLine.trimmingCharacters(in: .init(charactersIn: " ")) + " " + priorityStr
+            }
+        }
+
+        // Clean up double spaces
+        while newLine.contains("  ") {
+            newLine = newLine.replacingOccurrences(of: "  ", with: " ")
+        }
+
+        return newLine
+    }
+
+    /// Replace tags in a task line with new tags.
+    /// Removes all existing #tag and +tag patterns, then appends the new tags.
+    private func applyTagChange(to line: String, newTags: [String]) -> String {
+        var newLine = line
+
+        // Remove all existing # and + tags
+        if let regex = try? NSRegularExpression(pattern: "\\s*[#+][\\w-]+(?:/[\\w-]+)*", options: []) {
+            let nsRange = NSRange(newLine.startIndex..., in: newLine)
+            newLine = regex.stringByReplacingMatches(in: newLine, range: nsRange, withTemplate: "")
+        }
+
+        // Append new tags before metadata emojis
+        if !newTags.isEmpty {
+            let tagStr = newTags.joined(separator: " ")
+            let metadataMarkers = ["📅", "🛫", "⏳", "✅", "🔁", "🔂", "⏫", "🔼", "🔽"]
+            var insertIndex: String.Index? = nil
+
+            for marker in metadataMarkers {
+                if let range = newLine.range(of: marker) {
+                    if insertIndex == nil || range.lowerBound < insertIndex! {
+                        insertIndex = range.lowerBound
+                    }
+                }
+            }
+
+            if let idx = insertIndex {
+                let prefix = String(newLine[..<idx]).trimmingCharacters(in: .init(charactersIn: " "))
+                let suffix = String(newLine[idx...])
+                newLine = prefix + " " + tagStr + " " + suffix
+            } else {
+                newLine = newLine.trimmingCharacters(in: .init(charactersIn: " ")) + " " + tagStr
             }
         }
 

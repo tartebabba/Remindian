@@ -167,7 +167,7 @@ class SyncEngine {
             var remindersTasks = try await destination.fetchAllTasks()
             debugLog("[SyncEngine] Found \(remindersTasks.count) destination tasks")
 
-            // Filter by synced Reminders lists if configured
+            // Filter by synced Reminders lists if configured (whitelist)
             if !config.syncedRemindersLists.isEmpty {
                 let allowedLists = Set(config.syncedRemindersLists.map { $0.lowercased() })
                 let beforeCount = remindersTasks.count
@@ -176,6 +176,17 @@ class SyncEngine {
                     return allowedLists.contains(list.lowercased())
                 }
                 debugLog("[SyncEngine] Filtered destination tasks to allowed lists: \(beforeCount) → \(remindersTasks.count)")
+            }
+
+            // Filter out excluded Reminders lists (#21)
+            if !config.excludedRemindersLists.isEmpty {
+                let excludedLists = Set(config.excludedRemindersLists.map { $0.lowercased() })
+                let beforeCount = remindersTasks.count
+                remindersTasks = remindersTasks.filter { task in
+                    guard let list = task.targetList else { return true }
+                    return !excludedLists.contains(list.lowercased())
+                }
+                debugLog("[SyncEngine] Filtered out excluded lists: \(beforeCount) → \(remindersTasks.count)")
             }
 
             // Step 3: Build lookup maps
@@ -389,32 +400,13 @@ class SyncEngine {
                                 }
                             }
 
-                            // Handle un-completion: completed in Obsidian, un-completed in Reminders
+                            // Handle: completed in Obsidian, incomplete in Reminders.
+                            // Obsidian is the source of truth — update Reminders to match.
+                            // DO NOT revert Obsidian's completion state (#16).
                             if completionDiffers && !rTask.isCompleted && oTask.isCompleted {
-                                taskForReminders.isCompleted = false
-                                taskForReminders.completedDate = nil
-
-                                if config.enableCompletionWriteback {
-                                    if fileNotModifiedBeforeSync && !config.dryRunMode {
-                                        var adjustedTask = oTask
-                                        if let src = oTask.obsidianSource {
-                                            let adjustedLine = src.lineNumber + (fileLineOffsets[src.filePath] ?? 0)
-                                            adjustedTask.obsidianSource = SyncTask.ObsidianSource(
-                                                filePath: src.filePath,
-                                                lineNumber: adjustedLine,
-                                                originalLine: src.originalLine
-                                            )
-                                        }
-                                        try source.markTaskIncomplete(task: adjustedTask, config: config)
-                                        result.completionsWrittenBack += 1
-                                        result.details.append(SyncLogDetail(
-                                            action: .completionWriteback,
-                                            taskTitle: oTask.title + " (uncompleted)",
-                                            filePath: oTask.obsidianSource?.filePath,
-                                            errorMessage: nil
-                                        ))
-                                    }
-                                }
+                                taskForReminders.isCompleted = true
+                                taskForReminders.completedDate = oTask.completedDate ?? Date()
+                                debugLog("[SyncEngine] Task completed in Obsidian, updating Reminders: \"\(oTask.title)\"")
                             }
 
                             // MARK: Metadata writeback (due date, start date, priority)
@@ -450,6 +442,18 @@ class SyncEngine {
                                         metadataChanges.newPriority = rTask.priority
                                         taskForReminders.priority = rTask.priority
                                         changeDescriptions.append("Priority → \(rTask.priority.displayName)")
+                                    }
+
+                                    // Tag writeback (#17 — GoodTask support)
+                                    if config.enableTagWriteback {
+                                        let rTags = Set(rTask.tags)
+                                        let oTags = Set(oTask.tags)
+                                        if rTags != oTags {
+                                            debugLog("[SyncEngine] Tags changed in destination for \"\(oTask.title)\": \(oTags) → \(rTags)")
+                                            metadataChanges.newTags = rTask.tags
+                                            taskForReminders.tags = rTask.tags
+                                            changeDescriptions.append("Tags → \(rTask.tags.joined(separator: ", "))")
+                                        }
                                     }
 
                                     // Apply all metadata changes atomically
@@ -725,6 +729,21 @@ class SyncEngine {
                             taskTitle: task.title,
                             filePath: task.obsidianSource?.filePath,
                             errorMessage: "List \"\(targetList)\" not in synced lists"
+                        ))
+                        continue
+                    }
+                }
+
+                // Skip tasks whose target list is excluded (#21)
+                if !config.excludedRemindersLists.isEmpty {
+                    let targetList = config.remindersListForTag(task.targetList ?? "")
+                    let excludedLists = Set(config.excludedRemindersLists.map { $0.lowercased() })
+                    if excludedLists.contains(targetList.lowercased()) {
+                        result.details.append(SyncLogDetail(
+                            action: .skipped,
+                            taskTitle: task.title,
+                            filePath: task.obsidianSource?.filePath,
+                            errorMessage: "List \"\(targetList)\" is excluded"
                         ))
                         continue
                     }

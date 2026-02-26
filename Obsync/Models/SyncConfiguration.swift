@@ -1,6 +1,35 @@
 import Foundation
 import SwiftUI
 
+/// Configurable YAML field name mapping for TaskNotes (#19).
+/// Lets users specify which frontmatter field names map to Remindian properties.
+struct TaskNotesFieldMapping: Codable, Equatable {
+    var title: String = "title"
+    var status: String = "status"
+    var priority: String = "priority"
+    var due: String = "due"
+    var scheduled: String = "scheduled"
+    var completedDate: String = "completedDate"
+    var tags: String = "tags"
+    var project: String = "project"
+    var context: String = "context"
+
+    /// Returns all custom field names as a lookup dictionary (lowercased key → property name).
+    var fieldLookup: [String: String] {
+        return [
+            title.lowercased(): "title",
+            status.lowercased(): "status",
+            priority.lowercased(): "priority",
+            due.lowercased(): "due",
+            scheduled.lowercased(): "scheduled",
+            completedDate.lowercased(): "completedDate",
+            tags.lowercased(): "tags",
+            project.lowercased(): "project",
+            context.lowercased(): "context",
+        ]
+    }
+}
+
 /// Configuration for the sync behavior
 class SyncConfiguration: ObservableObject, Codable {
     @Published var vaultPath: String
@@ -24,6 +53,7 @@ class SyncConfiguration: ObservableObject, Codable {
     @Published var enableStartDateWriteback: Bool
     @Published var enablePriorityWriteback: Bool
     @Published var enableNewTaskWriteback: Bool
+    @Published var enableTagWriteback: Bool
     @Published var inboxFilePath: String
     @Published var enableFileWatcher: Bool
     @Published var enableNotifications: Bool
@@ -42,12 +72,19 @@ class SyncConfiguration: ObservableObject, Codable {
     @Published var launchAtLogin: Bool
     @Published var maxCompletedTaskAgeDays: Int  // 0 = no limit, >0 = skip completed tasks older than N days
     @Published var syncedRemindersLists: [String]  // Empty = sync all lists, non-empty = only these lists
+    @Published var excludedRemindersLists: [String]  // Lists to always exclude from sync (e.g., Groceries)
     @Published var addTaskLinkToReminders: Bool  // Add obsidian:// link to Reminders URL field
 
     // MARK: - TaskNotes Custom Status Mapping (#10)
     @Published var taskNotesCompletedStatuses: [String]  // Statuses that mean "completed" (e.g., ["done", "completed", "cancelled"])
     @Published var taskNotesOpenStatus: String  // Status to write when marking incomplete (default: "open")
     @Published var taskNotesDoneStatus: String  // Status to write when marking complete (default: "done")
+
+    // MARK: - TaskNotes Field Mapping (#19)
+    @Published var taskNotesFieldMapping: TaskNotesFieldMapping  // Map YAML field names to Remindian properties
+
+    // MARK: - TaskNotes List Field (#20)
+    @Published var taskNotesListField: String  // Which field determines Reminders list ("tags", "project", "context", or custom)
 
     enum TaskSourceType: String, Codable, CaseIterable {
         case obsidianTasks = "obsidianTasks"
@@ -95,12 +132,13 @@ class SyncConfiguration: ObservableObject, Codable {
         case syncCompletedTasks, deleteCompletedAfterDays, conflictResolution
         case includeDueTime, hideDockIcon, forceDarkIcon, dryRunMode, enableCompletionWriteback
         case enableDueDateWriteback, enableStartDateWriteback, enablePriorityWriteback
-        case enableNewTaskWriteback, inboxFilePath, enableFileWatcher
+        case enableNewTaskWriteback, enableTagWriteback, inboxFilePath, enableFileWatcher
         case enableNotifications, globalHotKeyEnabled, globalHotKeyCode, globalHotKeyModifiers
         case taskSourceType, taskDestinationType, things3AuthToken, taskNotesFolder, taskNotesIntegrationMode
         case taskNotesMtnPath, taskNotesApiUrl
-        case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, addTaskLinkToReminders
+        case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
+        case taskNotesFieldMapping, taskNotesListField
     }
 
     init(
@@ -124,6 +162,7 @@ class SyncConfiguration: ObservableObject, Codable {
         enableStartDateWriteback: Bool = false,
         enablePriorityWriteback: Bool = false,
         enableNewTaskWriteback: Bool = false,
+        enableTagWriteback: Bool = false,
         inboxFilePath: String = "Inbox.md",
         enableFileWatcher: Bool = false,
         enableNotifications: Bool = true,
@@ -141,10 +180,13 @@ class SyncConfiguration: ObservableObject, Codable {
         launchAtLogin: Bool = false,
         maxCompletedTaskAgeDays: Int = 0,
         syncedRemindersLists: [String] = [],
+        excludedRemindersLists: [String] = [],
         addTaskLinkToReminders: Bool = true,
         taskNotesCompletedStatuses: [String] = ["done", "completed", "cancelled"],
         taskNotesOpenStatus: String = "open",
-        taskNotesDoneStatus: String = "done"
+        taskNotesDoneStatus: String = "done",
+        taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
+        taskNotesListField: String = "tags"
     ) {
         self.vaultPath = vaultPath
         self.syncIntervalMinutes = syncIntervalMinutes
@@ -167,6 +209,7 @@ class SyncConfiguration: ObservableObject, Codable {
         self.enableStartDateWriteback = enableStartDateWriteback
         self.enablePriorityWriteback = enablePriorityWriteback
         self.enableNewTaskWriteback = enableNewTaskWriteback
+        self.enableTagWriteback = enableTagWriteback
         self.inboxFilePath = inboxFilePath
         self.enableFileWatcher = enableFileWatcher
         self.enableNotifications = enableNotifications
@@ -183,10 +226,13 @@ class SyncConfiguration: ObservableObject, Codable {
         self.launchAtLogin = launchAtLogin
         self.maxCompletedTaskAgeDays = maxCompletedTaskAgeDays
         self.syncedRemindersLists = syncedRemindersLists
+        self.excludedRemindersLists = excludedRemindersLists
         self.addTaskLinkToReminders = addTaskLinkToReminders
         self.taskNotesCompletedStatuses = taskNotesCompletedStatuses
         self.taskNotesOpenStatus = taskNotesOpenStatus
         self.taskNotesDoneStatus = taskNotesDoneStatus
+        self.taskNotesFieldMapping = taskNotesFieldMapping
+        self.taskNotesListField = taskNotesListField
     }
 
     required init(from decoder: Decoder) throws {
@@ -212,6 +258,7 @@ class SyncConfiguration: ObservableObject, Codable {
         enableStartDateWriteback = try container.decodeIfPresent(Bool.self, forKey: .enableStartDateWriteback) ?? false
         enablePriorityWriteback = try container.decodeIfPresent(Bool.self, forKey: .enablePriorityWriteback) ?? false
         enableNewTaskWriteback = try container.decodeIfPresent(Bool.self, forKey: .enableNewTaskWriteback) ?? false
+        enableTagWriteback = try container.decodeIfPresent(Bool.self, forKey: .enableTagWriteback) ?? false
         inboxFilePath = try container.decodeIfPresent(String.self, forKey: .inboxFilePath) ?? "Inbox.md"
         enableFileWatcher = try container.decodeIfPresent(Bool.self, forKey: .enableFileWatcher) ?? false
         enableNotifications = try container.decodeIfPresent(Bool.self, forKey: .enableNotifications) ?? true
@@ -228,10 +275,13 @@ class SyncConfiguration: ObservableObject, Codable {
         launchAtLogin = try container.decodeIfPresent(Bool.self, forKey: .launchAtLogin) ?? false
         maxCompletedTaskAgeDays = try container.decodeIfPresent(Int.self, forKey: .maxCompletedTaskAgeDays) ?? 0
         syncedRemindersLists = try container.decodeIfPresent([String].self, forKey: .syncedRemindersLists) ?? []
+        excludedRemindersLists = try container.decodeIfPresent([String].self, forKey: .excludedRemindersLists) ?? []
         addTaskLinkToReminders = try container.decodeIfPresent(Bool.self, forKey: .addTaskLinkToReminders) ?? true
         taskNotesCompletedStatuses = try container.decodeIfPresent([String].self, forKey: .taskNotesCompletedStatuses) ?? ["done", "completed", "cancelled"]
         taskNotesOpenStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesOpenStatus) ?? "open"
         taskNotesDoneStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesDoneStatus) ?? "done"
+        taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
+        taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -257,6 +307,7 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(enableStartDateWriteback, forKey: .enableStartDateWriteback)
         try container.encode(enablePriorityWriteback, forKey: .enablePriorityWriteback)
         try container.encode(enableNewTaskWriteback, forKey: .enableNewTaskWriteback)
+        try container.encode(enableTagWriteback, forKey: .enableTagWriteback)
         try container.encode(inboxFilePath, forKey: .inboxFilePath)
         try container.encode(enableFileWatcher, forKey: .enableFileWatcher)
         try container.encode(enableNotifications, forKey: .enableNotifications)
@@ -273,10 +324,13 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(launchAtLogin, forKey: .launchAtLogin)
         try container.encode(maxCompletedTaskAgeDays, forKey: .maxCompletedTaskAgeDays)
         try container.encode(syncedRemindersLists, forKey: .syncedRemindersLists)
+        try container.encode(excludedRemindersLists, forKey: .excludedRemindersLists)
         try container.encode(addTaskLinkToReminders, forKey: .addTaskLinkToReminders)
         try container.encode(taskNotesCompletedStatuses, forKey: .taskNotesCompletedStatuses)
         try container.encode(taskNotesOpenStatus, forKey: .taskNotesOpenStatus)
         try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)
+        try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
+        try container.encode(taskNotesListField, forKey: .taskNotesListField)
     }
 
     // MARK: - Persistence

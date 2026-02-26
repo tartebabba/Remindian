@@ -353,9 +353,9 @@ extension SyncTask {
     static func fromReminder(_ reminder: EKReminder, listName: String) -> SyncTask {
         var tags: [String] = []
         
-        // Parse tags from notes if present
+        // Parse tags from notes if present (supports both # and + prefixes)
         if let notes = reminder.notes {
-            let tagRegex = try? NSRegularExpression(pattern: "#[\\w-]+", options: [])
+            let tagRegex = try? NSRegularExpression(pattern: "[#+][\\w-]+(?:/[\\w-]+)*", options: [])
             let range = NSRange(notes.startIndex..., in: notes)
             if let matches = tagRegex?.matches(in: notes, options: [], range: range) {
                 for match in matches {
