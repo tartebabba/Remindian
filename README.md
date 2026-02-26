@@ -10,6 +10,12 @@
   <em>Remindian is free and open source. If it saves you time, consider buying me a coffee!</em>
 </p>
 
+<p align="center">
+  <a href="https://buymeacoffee.com/santofer">
+    <img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="Buy Me A Coffee" height="45" width="162">
+  </a>
+</p>
+
 ---
 
 A native macOS menu-bar app that syncs your tasks between [Obsidian](https://obsidian.md), [Apple Reminders](https://support.apple.com/guide/reminders/welcome/mac), and [Things 3](https://culturedcode.com/things/).
