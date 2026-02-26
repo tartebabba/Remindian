@@ -1,5 +1,17 @@
 # Remindian
 
+<p align="center">
+  <a href="https://buymeacoffee.com/santofer">
+    <img src="https://img.buymeacoffee.com/button-api/?text=Support Remindian&emoji=☕&slug=santofer&button_colour=FF813F&font_colour=ffffff&font_family=Poppins&outline_colour=000000&coffee_colour=FFDD00" alt="Buy Me A Coffee" height="50">
+  </a>
+</p>
+
+<p align="center">
+  <em>Remindian is free and open source. If it saves you time, consider buying me a coffee!</em>
+</p>
+
+---
+
 A native macOS menu-bar app that syncs your tasks between [Obsidian](https://obsidian.md), [Apple Reminders](https://support.apple.com/guide/reminders/welcome/mac), and [Things 3](https://culturedcode.com/things/).
 
 Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) plugin format and the [TaskNotes](https://github.com/nicolo/obsidian-tasknotes) plugin — and two destinations — Apple Reminders and Things 3. Mix and match to build your ideal workflow.
