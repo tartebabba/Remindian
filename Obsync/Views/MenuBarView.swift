@@ -2,6 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var syncManager: SyncManager
+    @ObservedObject private var updater = UpdaterService.shared
 
     private let menuFont = Font.system(size: 13)
 
@@ -89,6 +90,16 @@ struct MenuBarView: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
+
+                Divider()
+            }
+
+            // Update available banner
+            if updater.updateAvailable {
+                menuButton("Update Available: \(updater.latestVersion)", icon: "arrow.up.circle.fill") {
+                    updater.downloadUpdate()
+                }
+                .foregroundColor(.blue)
 
                 Divider()
             }

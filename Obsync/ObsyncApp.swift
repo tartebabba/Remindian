@@ -58,6 +58,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Start file watcher if enabled
         SyncManager.shared.updateFileWatcher()
 
+        // Initialize auto-updater so it starts checking on launch (#23)
+        _ = UpdaterService.shared
+
         // Request Reminders access on launch
         Task {
             await SyncManager.shared.requestRemindersAccess()

@@ -2,8 +2,10 @@ import Foundation
 import AppKit
 
 /// Lightweight auto-updater that checks GitHub Releases for new versions.
-/// Downloads the DMG, mounts it, and replaces the running app — all without
-/// opening a browser.
+/// In a sandboxed app, Process() calls (hdiutil, open) are unreliable,
+/// so we open the DMG download URL in the browser and let the user
+/// drag-install. The version check itself uses URLSession (allowed by
+/// the com.apple.security.network.client entitlement).
 @MainActor
 class UpdaterService: ObservableObject {
     static let shared = UpdaterService()
@@ -15,9 +17,8 @@ class UpdaterService: ObservableObject {
     @Published var latestVersion: String = ""
     @Published var releaseNotes: String = ""
     @Published var downloadURL: URL?
+    @Published var releasePageURL: URL?
     @Published var isChecking = false
-    @Published var isDownloading = false
-    @Published var downloadProgress: Double = 0
     @Published var lastCheckDate: Date?
     @Published var errorMessage: String?
     @Published var upToDate = false
@@ -25,7 +26,8 @@ class UpdaterService: ObservableObject {
     private var checkTimer: Timer?
 
     private init() {
-        // Check for updates on launch (after a short delay)
+        debugLog("[Updater] Service initialized")
+        // Check for updates on launch (after a short delay to let the app settle)
         DispatchQueue.main.asyncAfter(deadline: .now() + 10) { [weak self] in
             Task { await self?.checkForUpdates(silent: true) }
         }
@@ -62,12 +64,17 @@ class UpdaterService: ObservableObject {
 
             let currentVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "0"
 
+            debugLog("[Updater] Current: \(currentVersion), Remote: \(remoteVersion)")
+
             if compareVersions(remoteVersion, isNewerThan: currentVersion) {
                 latestVersion = release.tagName
                 releaseNotes = release.body ?? ""
                 downloadURL = release.assets.first(where: { $0.name.hasSuffix(".dmg") })?.browserDownloadUrl
+                releasePageURL = URL(string: "https://github.com/\(owner)/\(repo)/releases/tag/\(release.tagName)")
                 updateAvailable = true
                 lastCheckDate = Date()
+
+                debugLog("[Updater] Update available: \(release.tagName)")
 
                 if !silent {
                     showUpdateNotification()
@@ -75,6 +82,7 @@ class UpdaterService: ObservableObject {
             } else {
                 updateAvailable = false
                 lastCheckDate = Date()
+                debugLog("[Updater] Up to date")
                 if !silent {
                     upToDate = true
                 }
@@ -87,63 +95,28 @@ class UpdaterService: ObservableObject {
         }
     }
 
-    // MARK: - Download and Install
+    // MARK: - Download Update
 
-    func downloadAndInstall() async {
-        guard let url = downloadURL else {
+    /// Opens the DMG download in the browser. In a sandboxed app we cannot
+    /// use Process() to mount DMGs or replace the running bundle, so we
+    /// let the user drag-install from the downloaded DMG.
+    func downloadUpdate() {
+        if let url = downloadURL {
+            debugLog("[Updater] Opening DMG download: \(url)")
+            NSWorkspace.shared.open(url)
+        } else if let page = releasePageURL {
+            debugLog("[Updater] Opening release page: \(page)")
+            NSWorkspace.shared.open(page)
+        } else {
             errorMessage = "No download URL available"
-            return
         }
+    }
 
-        isDownloading = true
-        downloadProgress = 0
-        errorMessage = nil
-
-        do {
-            // Download DMG to temp directory
-            let tempDir = FileManager.default.temporaryDirectory
-            let dmgPath = tempDir.appendingPathComponent("Remindian-update.dmg")
-
-            // Remove existing temp file
-            try? FileManager.default.removeItem(at: dmgPath)
-
-            // Download with progress tracking
-            let (localURL, _) = try await downloadWithProgress(from: url)
-
-            // Move to expected path
-            try? FileManager.default.removeItem(at: dmgPath)
-            try FileManager.default.moveItem(at: localURL, to: dmgPath)
-
-            // Mount DMG
-            let mountPoint = try await mountDMG(at: dmgPath)
-
-            // Find .app in mounted volume
-            let contents = try FileManager.default.contentsOfDirectory(atPath: mountPoint)
-            guard let appName = contents.first(where: { $0.hasSuffix(".app") }) else {
-                throw UpdateError.appNotFoundInDMG
-            }
-
-            let sourceApp = URL(fileURLWithPath: mountPoint).appendingPathComponent(appName)
-            let currentApp = Bundle.main.bundleURL
-
-            // Replace the running app
-            try replaceApp(from: sourceApp, to: currentApp)
-
-            // Unmount DMG
-            unmountDMG(at: mountPoint)
-
-            // Clean up
-            try? FileManager.default.removeItem(at: dmgPath)
-
-            // Relaunch
-            relaunchApp()
-
-        } catch {
-            errorMessage = "Update failed: \(error.localizedDescription)"
-            debugLog("[Updater] Download/install failed: \(error)")
+    /// Opens the GitHub release page in the browser.
+    func openReleasePage() {
+        if let page = releasePageURL {
+            NSWorkspace.shared.open(page)
         }
-
-        isDownloading = false
     }
 
     // MARK: - Private Helpers
@@ -156,8 +129,13 @@ class UpdaterService: ObservableObject {
 
         let (data, response) = try await URLSession.shared.data(for: request)
 
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw UpdateError.apiError("GitHub API returned non-200 status")
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw UpdateError.apiError("Invalid response")
+        }
+
+        guard httpResponse.statusCode == 200 else {
+            let snippet = String(data: data.prefix(200), encoding: .utf8) ?? ""
+            throw UpdateError.apiError("HTTP \(httpResponse.statusCode): \(snippet)")
         }
 
         let decoder = JSONDecoder()
@@ -165,127 +143,12 @@ class UpdaterService: ObservableObject {
         return try decoder.decode(GitHubRelease.self, from: data)
     }
 
-    private func downloadWithProgress(from url: URL) async throws -> (URL, URLResponse) {
-        let (asyncBytes, response) = try await URLSession.shared.bytes(from: url)
-        let totalBytes = response.expectedContentLength
-
-        let tempFile = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".dmg")
-        let fileHandle = try FileHandle(forWritingTo: {
-            FileManager.default.createFile(atPath: tempFile.path, contents: nil)
-            return tempFile
-        }())
-
-        var downloadedBytes: Int64 = 0
-        var buffer = Data()
-        let bufferSize = 65536
-
-        for try await byte in asyncBytes {
-            buffer.append(byte)
-            if buffer.count >= bufferSize {
-                fileHandle.write(buffer)
-                downloadedBytes += Int64(buffer.count)
-                buffer.removeAll(keepingCapacity: true)
-                if totalBytes > 0 {
-                    downloadProgress = Double(downloadedBytes) / Double(totalBytes)
-                }
-            }
-        }
-
-        if !buffer.isEmpty {
-            fileHandle.write(buffer)
-            downloadedBytes += Int64(buffer.count)
-        }
-
-        fileHandle.closeFile()
-        downloadProgress = 1.0
-
-        return (tempFile, response)
-    }
-
-    private func mountDMG(at path: URL) async throws -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        process.arguments = ["attach", path.path, "-nobrowse", "-mountrandom", "/tmp"]
-
-        let stdout = Pipe()
-        process.standardOutput = stdout
-        process.standardError = Pipe()
-
-        try process.run()
-        process.waitUntilExit()
-
-        guard process.terminationStatus == 0 else {
-            throw UpdateError.mountFailed
-        }
-
-        let output = String(data: stdout.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-
-        // Parse mount point from hdiutil output (last column of last line)
-        let lines = output.components(separatedBy: "\n").filter { !$0.isEmpty }
-        guard let lastLine = lines.last else {
-            throw UpdateError.mountFailed
-        }
-
-        // hdiutil output format: "/dev/diskX\tGUID_partition_scheme\t/tmp/dmg.XXXXXX"
-        let components = lastLine.components(separatedBy: "\t")
-        guard let mountPoint = components.last?.trimmingCharacters(in: .whitespaces), !mountPoint.isEmpty else {
-            throw UpdateError.mountFailed
-        }
-
-        return mountPoint
-    }
-
-    private func unmountDMG(at mountPoint: String) {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/hdiutil")
-        process.arguments = ["detach", mountPoint, "-quiet"]
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try? process.run()
-        process.waitUntilExit()
-    }
-
-    private func replaceApp(from source: URL, to destination: URL) throws {
-        let fileManager = FileManager.default
-
-        // Create a backup
-        let backupURL = destination.deletingLastPathComponent().appendingPathComponent("Remindian-backup.app")
-        try? fileManager.removeItem(at: backupURL)
-
-        // Use NSWorkspace to replace the app atomically
-        let tempDestination = destination.deletingLastPathComponent().appendingPathComponent("Remindian-new.app")
-        try? fileManager.removeItem(at: tempDestination)
-
-        // Copy new app
-        try fileManager.copyItem(at: source, to: tempDestination)
-
-        // Move current app to backup
-        try fileManager.moveItem(at: destination, to: backupURL)
-
-        // Move new app to destination
-        try fileManager.moveItem(at: tempDestination, to: destination)
-
-        // Remove backup
-        try? fileManager.removeItem(at: backupURL)
-    }
-
-    private func relaunchApp() {
-        let url = Bundle.main.bundleURL
-        let task = Process()
-        task.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        task.arguments = ["-n", url.path]
-        try? task.run()
-
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            NSApp.terminate(nil)
-        }
-    }
-
     private func showUpdateNotification() {
-        let notification = NSUserNotification()
-        notification.title = "Remindian Update Available"
-        notification.informativeText = "Version \(latestVersion) is available. Open Remindian to update."
-        NSUserNotificationCenter.default.deliver(notification)
+        NotificationService.shared.sendNotification(
+            title: "Remindian Update Available",
+            body: "Version \(latestVersion) is available. Open Remindian to update.",
+            category: .syncComplete
+        )
     }
 
     /// Compare two semantic version strings. Returns true if `version` > `current`.

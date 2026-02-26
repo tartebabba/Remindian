@@ -78,24 +78,25 @@ struct AboutView: View {
                     }
                     .font(.callout)
 
-                    if updater.isDownloading {
-                        ProgressView(value: updater.downloadProgress)
-                            .frame(width: 200)
-                        Text("Downloading update...")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                    } else {
-                        Button(action: {
-                            Task { await updater.downloadAndInstall() }
-                        }) {
-                            HStack {
-                                Image(systemName: "arrow.down.circle.fill")
-                                Text("Install Update")
-                            }
-                            .frame(width: 200)
+                    Button(action: {
+                        updater.downloadUpdate()
+                    }) {
+                        HStack {
+                            Image(systemName: "arrow.down.circle.fill")
+                            Text("Download Update")
                         }
-                        .buttonStyle(.borderedProminent)
+                        .frame(width: 200)
                     }
+                    .buttonStyle(.borderedProminent)
+
+                    Button(action: {
+                        updater.openReleasePage()
+                    }) {
+                        Text("View Release Notes")
+                            .font(.caption)
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundColor(.accentColor)
                 }
             } else {
                 Button(action: {

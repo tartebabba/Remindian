@@ -4,6 +4,16 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v3.5.1 (February 2026)
+
+### Bug Fixes
+- **Auto-update now works on app launch** — The update checker was only initialized when the About window was opened. It now starts automatically when the app launches and checks every 24 hours (#23)
+- **Update download works in sandboxed builds** — Replaced `Process()`-based DMG mount/install (blocked by sandbox) with browser-based download. Clicking "Download Update" opens the DMG in your browser for drag-install
+- **Update notification in menu bar** — When an update is available, it now shows directly in the menu bar dropdown (no need to open the About view)
+- **Fixed deprecated notification API** — Replaced removed `NSUserNotification` with modern `UNUserNotificationCenter` via `NotificationService`
+
+---
+
 ## v3.5.0 (February 2026)
 
 ### New Features
