@@ -20,7 +20,7 @@ Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/t
 
 ## Download
 
-**[Download Remindian v3.5.1](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
+**[Download Remindian v3.6.0](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
 
 > Since the app is not notarized, right-click the app and select **Open** on first launch to bypass Gatekeeper. Remindian includes a built-in auto-updater that checks for new versions on launch and every 24 hours.
 
@@ -67,10 +67,10 @@ Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/t
 
 Open **Settings** from the menu bar icon to configure:
 
-- **Source & Destination** — Choose your task source (Obsidian Tasks or TaskNotes) and sync destination (Apple Reminders or Things 3)
-- **General** — Vault path, sync interval, writeback toggles (completion, due date, start date, priority, tags), notifications, default list, launch at login
+- **General** — Source & destination, vault path, sync interval, writeback toggles (completion, due date, start date, priority, tags), notifications, default list, launch at login, global hotkey
 - **List Mappings** — Map Obsidian `#tags` or `+tags` to specific Reminders/Things lists
-- **Advanced** — TaskNotes integration mode (CLI/Files/HTTP), field mapping, status mapping, list field source (tags/project/context), folder whitelist/exclusions, Reminders list filtering, dry run mode, sync state reset, backup access
+- **TaskNotes** *(shown when TaskNotes is selected)* — Integration mode (CLI/Files/HTTP), custom status mapping, field mapping (remap YAML field names), list/folder source (tags/project/context)
+- **Advanced** — Folder whitelist/exclusions, Reminders list filtering, dry run mode, sync state reset, backup and audit log access
 
 ## How It Works
 
