@@ -31,7 +31,7 @@ struct SettingsView: View {
                 }
                 .tag(2)
         }
-        .frame(minWidth: 500, idealWidth: 600, minHeight: 500, idealHeight: 650)
+        .frame(minWidth: 550, idealWidth: 650, minHeight: 500, idealHeight: 700)
         .padding()
     }
 }
@@ -44,6 +44,45 @@ struct GeneralSettingsView: View {
     var body: some View {
         ScrollView {
             Form {
+                // Source & Destination — primary choice, belongs in General
+                Section {
+                    Picker("Task Source", selection: $syncManager.config.taskSourceType) {
+                        ForEach(SyncConfiguration.TaskSourceType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
+                        }
+                    }
+                    .onChange(of: syncManager.config.taskSourceType) { _ in
+                        syncManager.updateSourceAndDestination()
+                    }
+
+                    Picker("Sync To", selection: $syncManager.config.taskDestinationType) {
+                        ForEach(SyncConfiguration.TaskDestinationType.allCases, id: \.self) { type in
+                            Text(type.displayName).tag(type)
+                        }
+                    }
+                    .onChange(of: syncManager.config.taskDestinationType) { _ in
+                        syncManager.updateSourceAndDestination()
+                    }
+
+                    if syncManager.config.taskDestinationType == .things3 {
+                        HStack {
+                            Text("Auth Token:")
+                                .foregroundColor(.secondary)
+                            SecureField("From Things > Settings > General", text: $syncManager.config.things3AuthToken)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                        .padding(.leading, 20)
+
+                        Text("Required for updating tasks. Go to Things > Settings > General > Enable Things URLs to get your token.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
+                } header: {
+                    Text("Source & Destination")
+                }
+
                 Section {
                     HStack {
                         TextField("Vault Path", text: $syncManager.config.vaultPath)
@@ -67,6 +106,7 @@ struct GeneralSettingsView: View {
                     Text("Obsidian Vault")
                 }
 
+                // Obsidian → Reminders settings (#24 — separate sync directions)
                 Section {
                     Toggle("Enable automatic sync", isOn: $syncManager.config.enableAutoSync)
 
@@ -90,24 +130,29 @@ struct GeneralSettingsView: View {
 
                     Toggle("Include time in due dates", isOn: $syncManager.config.includeDueTime)
                         .help("When disabled, reminders will be all-day tasks without a specific time")
+                } header: {
+                    Label("Obsidian \u{2192} Reminders", systemImage: "arrow.right")
+                }
 
-                    Toggle("Sync completion back to Obsidian", isOn: $syncManager.config.enableCompletionWriteback)
-                        .help("When enabled, marking a task complete in Reminders will update the checkbox and add a completion date in Obsidian")
+                // Reminders → Obsidian settings (#24 — separate sync directions)
+                Section {
+                    Toggle("Sync completions back", isOn: $syncManager.config.enableCompletionWriteback)
+                        .help("Marking a task complete in Reminders will update the checkbox and add a completion date in Obsidian")
 
-                    Toggle("Sync due date changes back to Obsidian", isOn: $syncManager.config.enableDueDateWriteback)
-                        .help("When enabled, changing a due date in Reminders will update the 📅 date in Obsidian")
+                    Toggle("Sync due date changes back", isOn: $syncManager.config.enableDueDateWriteback)
+                        .help("Changing a due date in Reminders will update the \u{1F4C5} date in Obsidian")
 
-                    Toggle("Sync start date changes back to Obsidian", isOn: $syncManager.config.enableStartDateWriteback)
-                        .help("When enabled, changing a start date in Reminders will update the 🛫 date in Obsidian")
+                    Toggle("Sync start date changes back", isOn: $syncManager.config.enableStartDateWriteback)
+                        .help("Changing a start date in Reminders will update the \u{1F6EB} date in Obsidian")
 
-                    Toggle("Sync priority changes back to Obsidian", isOn: $syncManager.config.enablePriorityWriteback)
-                        .help("When enabled, changing priority in Reminders will update the priority emoji (⏫/🔼/🔽) in Obsidian")
+                    Toggle("Sync priority changes back", isOn: $syncManager.config.enablePriorityWriteback)
+                        .help("Changing priority in Reminders will update the priority emoji in Obsidian")
 
-                    Toggle("Sync tag changes back to Obsidian", isOn: $syncManager.config.enableTagWriteback)
-                        .help("When enabled, tag changes in Reminders (e.g., from GoodTask) will update #tags in Obsidian")
+                    Toggle("Sync tag changes back", isOn: $syncManager.config.enableTagWriteback)
+                        .help("Tag changes in Reminders (e.g., from GoodTask) will update #tags in Obsidian")
 
-                    Toggle("Write new Reminders tasks to Obsidian inbox", isOn: $syncManager.config.enableNewTaskWriteback)
-                        .help("When enabled, new tasks created in Reminders will be appended to an inbox file in your vault")
+                    Toggle("Write new Reminders tasks to Obsidian", isOn: $syncManager.config.enableNewTaskWriteback)
+                        .help("New tasks created in Reminders will be appended to an inbox file in your vault")
 
                     if syncManager.config.enableNewTaskWriteback {
                         HStack {
@@ -129,10 +174,9 @@ struct GeneralSettingsView: View {
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                         }
-                        .padding(.leading, 20)
                     }
                 } header: {
-                    Text("Sync Behavior")
+                    Label("Reminders \u{2192} Obsidian (Writeback)", systemImage: "arrow.left")
                 }
 
                 Section {
@@ -287,7 +331,7 @@ struct ListMappingsView: View {
     }
 }
 
-// MARK: - TaskNotes Settings (#24 — separate tab for cleaner UI)
+// MARK: - TaskNotes Settings (#24 — separate tab with individual rows and wider fields)
 
 struct TaskNotesSettingsView: View {
     @EnvironmentObject var syncManager: SyncManager
@@ -305,7 +349,7 @@ struct TaskNotesSettingsView: View {
                             Text("HTTP API").tag("http")
                         }
                         .pickerStyle(.segmented)
-                        .frame(width: 250)
+                        .frame(width: 280)
                     }
                     .onChange(of: syncManager.config.taskNotesIntegrationMode) { _ in
                         syncManager.updateSourceAndDestination()
@@ -321,7 +365,7 @@ struct TaskNotesSettingsView: View {
                                 .foregroundColor(.secondary)
                             TextField("/opt/homebrew/bin/mtn", text: $syncManager.config.taskNotesMtnPath)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 200)
+                                .frame(maxWidth: .infinity)
                             Button("Browse...") {
                                 syncManager.selectMtnBinary()
                             }
@@ -351,7 +395,7 @@ struct TaskNotesSettingsView: View {
                                 .foregroundColor(.secondary)
                             TextField("http://localhost:8080", text: $syncManager.config.taskNotesApiUrl)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 250)
+                                .frame(maxWidth: .infinity)
                         }
                         .onChange(of: syncManager.config.taskNotesApiUrl) { _ in
                             syncManager.updateSourceAndDestination()
@@ -363,7 +407,7 @@ struct TaskNotesSettingsView: View {
                             .foregroundColor(.secondary)
                         TextField("tasks", text: $syncManager.config.taskNotesFolder)
                             .textFieldStyle(.roundedBorder)
-                            .frame(width: 200)
+                            .frame(maxWidth: .infinity)
                     }
 
                     Text("Relative path within your vault where TaskNotes stores task files.")
@@ -374,55 +418,71 @@ struct TaskNotesSettingsView: View {
                 }
 
                 Section {
-                    HStack {
-                        Text("Completed statuses:")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Completed statuses")
                             .foregroundColor(.secondary)
-                        TextField("done, completed, cancelled", text: Binding(
+                            .font(.subheadline)
+                        TextField("done, completed, cancelled, archived, shipped", text: Binding(
                             get: { syncManager.config.taskNotesCompletedStatuses.joined(separator: ", ") },
                             set: { syncManager.config.taskNotesCompletedStatuses = $0.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty } }
                         ))
                         .textFieldStyle(.roundedBorder)
-                        .frame(width: 250)
+                        .frame(maxWidth: .infinity)
+                        Text("Comma-separated list of status values that mean \"completed\".")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
 
-                    HStack(spacing: 16) {
-                        HStack {
-                            Text("Open status:")
+                    HStack(spacing: 20) {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Open status")
                                 .foregroundColor(.secondary)
+                                .font(.subheadline)
                             TextField("open", text: $syncManager.config.taskNotesOpenStatus)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
-                        }
-                        HStack {
-                            Text("Done status:")
+                                .frame(width: 150)
+                            Text("Written when marking incomplete")
+                                .font(.caption)
                                 .foregroundColor(.secondary)
+                        }
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Done status")
+                                .foregroundColor(.secondary)
+                                .font(.subheadline)
                             TextField("done", text: $syncManager.config.taskNotesDoneStatus)
                                 .textFieldStyle(.roundedBorder)
-                                .frame(width: 100)
+                                .frame(width: 150)
+                            Text("Written when marking complete")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
                         }
                     }
-
-                    Text("Comma-separated list of status values that mean \"completed\".")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
                 } header: {
                     Text("Status Mapping")
                 }
 
                 Section {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Map your YAML frontmatter field names to Remindian properties.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
+                    Text("Map your YAML frontmatter field names to Remindian properties. If your TaskNotes uses custom field names (e.g., \"deadline\" instead of \"due\"), configure them here.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
 
+                    VStack(alignment: .leading, spacing: 10) {
                         FieldMappingRow(label: "Title", binding: $syncManager.config.taskNotesFieldMapping.title, placeholder: "title")
+                        Divider()
                         FieldMappingRow(label: "Status", binding: $syncManager.config.taskNotesFieldMapping.status, placeholder: "status")
+                        Divider()
                         FieldMappingRow(label: "Priority", binding: $syncManager.config.taskNotesFieldMapping.priority, placeholder: "priority")
+                        Divider()
                         FieldMappingRow(label: "Due Date", binding: $syncManager.config.taskNotesFieldMapping.due, placeholder: "due")
+                        Divider()
                         FieldMappingRow(label: "Start Date", binding: $syncManager.config.taskNotesFieldMapping.scheduled, placeholder: "scheduled")
+                        Divider()
                         FieldMappingRow(label: "Completed", binding: $syncManager.config.taskNotesFieldMapping.completedDate, placeholder: "completedDate")
+                        Divider()
                         FieldMappingRow(label: "Tags", binding: $syncManager.config.taskNotesFieldMapping.tags, placeholder: "tags")
+                        Divider()
                         FieldMappingRow(label: "Project", binding: $syncManager.config.taskNotesFieldMapping.project, placeholder: "project")
+                        Divider()
                         FieldMappingRow(label: "Context", binding: $syncManager.config.taskNotesFieldMapping.context, placeholder: "context")
                     }
                 } header: {
@@ -439,7 +499,7 @@ struct TaskNotesSettingsView: View {
                             Text("Context").tag("context")
                         }
                         .pickerStyle(.segmented)
-                        .frame(width: 220)
+                        .frame(width: 250)
                     }
 
                     Text("Which TaskNotes field determines the Reminders list/folder. Supports wikilinks (e.g., [[My Project]] \u{2192} My Project).")
@@ -454,7 +514,7 @@ struct TaskNotesSettingsView: View {
     }
 }
 
-/// Individual field mapping row for cleaner layout (#24)
+/// Individual field mapping row — each field on its own line with wider text input (#24)
 struct FieldMappingRow: View {
     let label: String
     @Binding var binding: String
@@ -464,10 +524,10 @@ struct FieldMappingRow: View {
         HStack {
             Text(label)
                 .foregroundColor(.secondary)
-                .frame(width: 80, alignment: .trailing)
+                .frame(width: 90, alignment: .trailing)
             TextField(placeholder, text: $binding)
                 .textFieldStyle(.roundedBorder)
-                .frame(width: 150)
+                .frame(maxWidth: .infinity)
         }
     }
 }
@@ -481,44 +541,6 @@ struct AdvancedSettingsView: View {
     var body: some View {
         ScrollView {
         Form {
-            Section {
-                Picker("Task Source", selection: $syncManager.config.taskSourceType) {
-                    ForEach(SyncConfiguration.TaskSourceType.allCases, id: \.self) { type in
-                        Text(type.displayName).tag(type)
-                    }
-                }
-                .onChange(of: syncManager.config.taskSourceType) { _ in
-                    syncManager.updateSourceAndDestination()
-                }
-
-                Picker("Sync To", selection: $syncManager.config.taskDestinationType) {
-                    ForEach(SyncConfiguration.TaskDestinationType.allCases, id: \.self) { type in
-                        Text(type.displayName).tag(type)
-                    }
-                }
-                .onChange(of: syncManager.config.taskDestinationType) { _ in
-                    syncManager.updateSourceAndDestination()
-                }
-
-                if syncManager.config.taskDestinationType == .things3 {
-                    HStack {
-                        Text("Auth Token:")
-                            .foregroundColor(.secondary)
-                        SecureField("From Things > Settings > General", text: $syncManager.config.things3AuthToken)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 250)
-                    }
-                    .padding(.leading, 20)
-
-                    Text("Required for updating tasks. Go to Things > Settings > General > Enable Things URLs to get your token.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-                }
-            } header: {
-                Text("Source & Destination")
-            }
-
             Section {
                 Toggle("Sync completed tasks", isOn: $syncManager.config.syncCompletedTasks)
 
