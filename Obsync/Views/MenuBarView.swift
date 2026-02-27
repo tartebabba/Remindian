@@ -2,7 +2,7 @@ import SwiftUI
 
 struct MenuBarView: View {
     @EnvironmentObject var syncManager: SyncManager
-    @ObservedObject private var updater = UpdaterService.shared
+    @StateObject private var updater = UpdaterService.shared
 
     private let menuFont = Font.system(size: 13)
 
@@ -13,6 +13,7 @@ struct MenuBarView: View {
                 Circle()
                     .fill(statusColor)
                     .frame(width: 8, height: 8)
+                    .help(statusTooltip)
                 Text(syncManager.statusMessage)
                     .font(menuFont)
 
@@ -39,10 +40,17 @@ struct MenuBarView: View {
             Divider()
 
             // Quick actions
-            menuButton("Sync Now", icon: "arrow.triangle.2.circlepath") {
-                Task { await syncManager.performSync() }
+            if syncManager.isSyncing {
+                menuButton("Stop Sync", icon: "stop.fill") {
+                    syncManager.cancelSync()
+                }
+                .foregroundColor(.red)
+            } else {
+                menuButton("Sync Now", icon: "arrow.triangle.2.circlepath") {
+                    Task { await syncManager.performSync() }
+                }
+                .disabled(!syncManager.hasRemindersAccess)
             }
-            .disabled(syncManager.isSyncing || !syncManager.hasRemindersAccess)
 
             if !syncManager.pendingConflicts.isEmpty {
                 menuButton("\(syncManager.pendingConflicts.count) Conflicts", icon: "exclamationmark.triangle.fill") {
@@ -64,22 +72,27 @@ struct MenuBarView: View {
                         if result.created > 0 {
                             Label("\(result.created)", systemImage: "plus.circle.fill")
                                 .foregroundColor(.green)
+                                .help("Created in Reminders")
                         }
                         if result.updated > 0 {
                             Label("\(result.updated)", systemImage: "arrow.triangle.2.circlepath")
                                 .foregroundColor(.blue)
+                                .help("Updated in Reminders")
                         }
                         if result.deleted > 0 {
                             Label("\(result.deleted)", systemImage: "minus.circle.fill")
                                 .foregroundColor(.red)
+                                .help("Deleted from Reminders")
                         }
                         if result.completionsWrittenBack > 0 {
                             Label("\(result.completionsWrittenBack)", systemImage: "checkmark.circle.fill")
                                 .foregroundColor(.purple)
+                                .help("Completed in Obsidian (writeback)")
                         }
                         if result.metadataWrittenBack > 0 {
                             Label("\(result.metadataWrittenBack)", systemImage: "pencil.circle.fill")
                                 .foregroundColor(.orange)
+                                .help("Metadata written back to Obsidian")
                         }
                         if result.created == 0 && result.updated == 0 && result.deleted == 0 && result.completionsWrittenBack == 0 && result.metadataWrittenBack == 0 {
                             Text("No changes")
@@ -153,6 +166,18 @@ struct MenuBarView: View {
             return .orange
         } else {
             return .green
+        }
+    }
+
+    private var statusTooltip: String {
+        if syncManager.isSyncing {
+            return "Blue: Sync in progress"
+        } else if !syncManager.hasRemindersAccess {
+            return "Red: No Reminders access — grant permission in System Settings"
+        } else if !syncManager.pendingConflicts.isEmpty {
+            return "Orange: Unresolved conflicts — open main window to resolve"
+        } else {
+            return "Green: Everything is synced and up to date"
         }
     }
 

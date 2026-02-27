@@ -71,8 +71,19 @@ struct HeaderView: View {
             Spacer()
 
             if syncManager.isSyncing {
-                ProgressView()
-                    .scaleEffect(0.7)
+                HStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.7)
+                    Button(action: {
+                        syncManager.cancelSync()
+                    }) {
+                        Label("Stop", systemImage: "stop.fill")
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(.red)
+                    .controlSize(.small)
+                    .help("Cancel the current sync operation")
+                }
             } else {
                 Button(action: {
                     Task {
@@ -175,6 +186,7 @@ struct SetupWizardView: View {
 
 struct MainDashboardView: View {
     @EnvironmentObject var syncManager: SyncManager
+    @State private var showResetConfirmation = false
 
     private func openSettingsWindow() {
         NSApplication.shared.activate(ignoringOtherApps: true)
@@ -217,8 +229,11 @@ struct MainDashboardView: View {
                             Divider()
                             HStack {
                                 StatBadge(value: result.created, label: "Created", color: .green)
+                                    .help("Tasks created in Reminders from Obsidian")
                                 StatBadge(value: result.updated, label: "Updated", color: .blue)
+                                    .help("Tasks updated in Reminders to match Obsidian changes")
                                 StatBadge(value: result.deleted, label: "Deleted", color: .red)
+                                    .help("Tasks removed from Reminders (deleted in Obsidian)")
                             }
 
                             if result.completionsWrittenBack > 0 {
@@ -229,6 +244,18 @@ struct MainDashboardView: View {
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
+                                .help("Tasks marked complete in Reminders → written back to Obsidian")
+                            }
+
+                            if result.metadataWrittenBack > 0 {
+                                HStack {
+                                    Image(systemName: "pencil.circle.fill")
+                                        .foregroundColor(.orange)
+                                    Text("\(result.metadataWrittenBack) metadata written back")
+                                        .font(.caption)
+                                        .foregroundColor(.secondary)
+                                }
+                                .help("Date/priority/tag changes from Reminders → written back to Obsidian")
                             }
 
                             if !result.errors.isEmpty {
@@ -236,6 +263,7 @@ struct MainDashboardView: View {
                                 Text("\(result.errors.count) errors occurred")
                                     .foregroundColor(.red)
                                     .font(.caption)
+                                    .help("Check History tab for error details")
                             }
 
                             if result.isDryRun {
@@ -247,6 +275,7 @@ struct MainDashboardView: View {
                                         .font(.caption)
                                         .foregroundColor(.secondary)
                                 }
+                                .help("Dry Run mode is on — disable it in Settings > Advanced")
                             }
                         }
                     }
@@ -273,7 +302,7 @@ struct MainDashboardView: View {
                     .frame(maxWidth: .infinity)
 
                     Button("Reset Sync State") {
-                        syncManager.resetSyncState()
+                        showResetConfirmation = true
                     }
                     .frame(maxWidth: .infinity)
                     .foregroundColor(.red)
@@ -281,6 +310,14 @@ struct MainDashboardView: View {
             }
             .padding()
             .frame(minWidth: 250, maxWidth: 300)
+            .alert("Reset Sync State?", isPresented: $showResetConfirmation) {
+                Button("Cancel", role: .cancel) { }
+                Button("Reset", role: .destructive) {
+                    syncManager.resetSyncState()
+                }
+            } message: {
+                Text("This will clear all sync mappings, history, and logs. The next sync will treat all tasks as new and re-create them in Reminders.")
+            }
 
             // Right panel - Tabbed: Conflicts / History
             TabView {

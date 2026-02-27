@@ -4,6 +4,33 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v3.6.0 (February 2026)
+
+### Bug Fixes
+- **Fixed crash on launch** — `@ObservedObject` in MenuBarView caused the updater to be recreated on every SwiftUI redraw, crashing the app after a few seconds. Changed to `@StateObject` for stable ownership
+- **Fixed tag writeback not forwarding tags** — `ObsidianTasksSource.updateTaskMetadata()` was not passing `newTags` to the underlying `ObsidianService`, silently dropping tag changes
+- **Fixed TaskNotes projects not creating Reminders folders** — YAML values with quotes (e.g., `project: "My Project"`) kept literal quote characters, causing list creation to fail. Now strips YAML quotes during frontmatter parsing (#28)
+- **Fixed auto-sync on first launch** — App was triggering a sync immediately after Reminders permission was granted, before the user completed onboarding. Now waits until onboarding is complete (#25)
+- **Fixed Reset Sync State inconsistency** — The dashboard and Advanced settings had different Reset buttons with different behaviors. Both now use a confirmation dialog and perform a comprehensive reset: clears sync state mappings, sync log, debug log, and resets first-sync flag (#29, #30)
+
+### New Features
+- **Sync stop/cancel button** — Cancel a running sync at any time from the main window header or menu bar dropdown. Uses cooperative cancellation with checks at key sync points (#26)
+- **Icon tooltips** — All sync status icons (created, updated, deleted, completions, metadata) now show descriptive tooltips on hover. Menu bar status dot also explains its color meaning (#31)
+- **Redesigned Settings** — Split the cluttered Advanced tab into separate tabs: General, List Mappings, TaskNotes (conditional), and Advanced. TaskNotes configuration gets its own dedicated tab with organized sections for Integration, Status Mapping, Field Mapping, and List/Folder Source (#24)
+
+### Technical Changes
+- `MenuBarView` uses `@StateObject` instead of `@ObservedObject` for `UpdaterService.shared`
+- `SyncManager` gains `currentSyncTask` tracking and `cancelSync()` method
+- `SyncEngine` gains `_cancellationRequested` flag with `NSLock`-based thread safety and `requestCancellation()`/`isCancelled` API
+- `SyncError.syncCancelled` added for clean cancellation reporting
+- `TaskNotesSource.parseTaskNotesFile()` strips YAML single/double quotes from frontmatter values
+- `SettingsView` split into `GeneralSettingsView`, `ListMappingsSettingsView`, `TaskNotesSettingsView`, `AdvancedSettingsView`
+- New `FieldMappingRow` helper view for individual field mapping display
+- Reset confirmation dialog shared between dashboard and advanced settings
+- `.help()` tooltips added to all `StatBadge` and menu bar sync result icons
+
+---
+
 ## v3.5.1 (February 2026)
 
 ### Bug Fixes

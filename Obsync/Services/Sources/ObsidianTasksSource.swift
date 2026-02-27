@@ -55,6 +55,7 @@ class ObsidianTasksSource: TaskSource {
         obsChanges.newDueDate = changes.newDueDate
         obsChanges.newStartDate = changes.newStartDate
         obsChanges.newPriority = changes.newPriority
+        obsChanges.newTags = changes.newTags
         try obsidianService.updateTaskMetadata(
             filePath: source.filePath,
             lineNumber: source.lineNumber,

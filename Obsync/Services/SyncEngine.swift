@@ -18,11 +18,26 @@ class SyncEngine {
     // Mutex to prevent concurrent sync operations
     private let syncLock = NSLock()
     private var _isSyncing = false
+    private var _cancellationRequested = false
 
     var isSyncing: Bool {
         syncLock.lock()
         defer { syncLock.unlock() }
         return _isSyncing
+    }
+
+    /// Request cancellation of the current sync operation (#26).
+    func requestCancellation() {
+        syncLock.lock()
+        _cancellationRequested = true
+        syncLock.unlock()
+    }
+
+    /// Check if cancellation was requested.
+    private var isCancelled: Bool {
+        syncLock.lock()
+        defer { syncLock.unlock() }
+        return _cancellationRequested
     }
 
     // MARK: - Result Types
@@ -100,6 +115,7 @@ class SyncEngine {
             return result
         }
         _isSyncing = true
+        _cancellationRequested = false
         syncLock.unlock()
 
         defer {
@@ -160,6 +176,13 @@ class SyncEngine {
             }
             if obsidianTasks.count > 5 {
                 debugLog("[SyncEngine]   ... and \(obsidianTasks.count - 5) more")
+            }
+
+            // Check for cancellation (#26)
+            if isCancelled {
+                debugLog("[SyncEngine] Sync cancelled after source scan")
+                result.errors.append(SyncError.syncCancelled)
+                return result
             }
 
             // Step 2: Get all tasks from destination
@@ -281,6 +304,13 @@ class SyncEngine {
                 result.errors.append(SyncError.safetyAbort(
                     "Source returned \(obsidianMap.count) tasks but \(existingMappingCount) are mapped. This might indicate a scan failure. Sync aborted to protect your data."
                 ))
+                return result
+            }
+
+            // Check for cancellation (#26)
+            if isCancelled {
+                debugLog("[SyncEngine] Sync cancelled before processing")
+                result.errors.append(SyncError.syncCancelled)
                 return result
             }
 
@@ -968,6 +998,7 @@ enum SyncError: LocalizedError {
     case missingSourceInfo
     case conflictNotResolved
     case syncAlreadyInProgress
+    case syncCancelled
     case vaultPathNotFound(String)
     case notAnObsidianVault(String)
     case safetyAbort(String)
@@ -982,6 +1013,8 @@ enum SyncError: LocalizedError {
             return "Conflict must be resolved before continuing"
         case .syncAlreadyInProgress:
             return "A sync operation is already in progress"
+        case .syncCancelled:
+            return "Sync was cancelled"
         case .vaultPathNotFound(let path):
             return "Vault path not found: \(path)"
         case .notAnObsidianVault(let path):

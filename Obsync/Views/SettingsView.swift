@@ -17,6 +17,14 @@ struct SettingsView: View {
                 }
                 .tag(1)
 
+            if syncManager.config.taskSourceType == .taskNotes {
+                TaskNotesSettingsView()
+                    .tabItem {
+                        Label("TaskNotes", systemImage: "doc.text")
+                    }
+                    .tag(3)
+            }
+
             AdvancedSettingsView()
                 .tabItem {
                     Label("Advanced", systemImage: "wrench.and.screwdriver")
@@ -279,6 +287,191 @@ struct ListMappingsView: View {
     }
 }
 
+// MARK: - TaskNotes Settings (#24 — separate tab for cleaner UI)
+
+struct TaskNotesSettingsView: View {
+    @EnvironmentObject var syncManager: SyncManager
+
+    var body: some View {
+        ScrollView {
+            Form {
+                Section {
+                    HStack {
+                        Text("Integration:")
+                            .foregroundColor(.secondary)
+                        Picker("", selection: $syncManager.config.taskNotesIntegrationMode) {
+                            Text("CLI (mtn)").tag("cli")
+                            Text("Direct Files").tag("file")
+                            Text("HTTP API").tag("http")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 250)
+                    }
+                    .onChange(of: syncManager.config.taskNotesIntegrationMode) { _ in
+                        syncManager.updateSourceAndDestination()
+                    }
+
+                    if syncManager.config.taskNotesIntegrationMode == "cli" {
+                        Text("Uses mdbase-tasknotes CLI. Works without Obsidian. Install: npm install -g mdbase-tasknotes")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            Text("mtn path:")
+                                .foregroundColor(.secondary)
+                            TextField("/opt/homebrew/bin/mtn", text: $syncManager.config.taskNotesMtnPath)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 200)
+                            Button("Browse...") {
+                                syncManager.selectMtnBinary()
+                            }
+                        }
+
+                        if syncManager.config.taskNotesMtnPath.isEmpty {
+                            Text("Select the mtn binary to grant sandbox access. Run 'which mtn' in Terminal to find its location.")
+                                .font(.caption)
+                                .foregroundColor(.orange)
+                        } else {
+                            HStack(spacing: 4) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                    .font(.caption)
+                                Text("mtn configured: \(syncManager.config.taskNotesMtnPath)")
+                            }
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        }
+                    } else if syncManager.config.taskNotesIntegrationMode == "http" {
+                        Text("Uses the TaskNotes plugin HTTP API. Requires Obsidian to be open.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        HStack {
+                            Text("API URL:")
+                                .foregroundColor(.secondary)
+                            TextField("http://localhost:8080", text: $syncManager.config.taskNotesApiUrl)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                        .onChange(of: syncManager.config.taskNotesApiUrl) { _ in
+                            syncManager.updateSourceAndDestination()
+                        }
+                    }
+
+                    HStack {
+                        Text("Tasks Folder:")
+                            .foregroundColor(.secondary)
+                        TextField("tasks", text: $syncManager.config.taskNotesFolder)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                    }
+
+                    Text("Relative path within your vault where TaskNotes stores task files.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } header: {
+                    Text("Integration")
+                }
+
+                Section {
+                    HStack {
+                        Text("Completed statuses:")
+                            .foregroundColor(.secondary)
+                        TextField("done, completed, cancelled", text: Binding(
+                            get: { syncManager.config.taskNotesCompletedStatuses.joined(separator: ", ") },
+                            set: { syncManager.config.taskNotesCompletedStatuses = $0.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty } }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 250)
+                    }
+
+                    HStack(spacing: 16) {
+                        HStack {
+                            Text("Open status:")
+                                .foregroundColor(.secondary)
+                            TextField("open", text: $syncManager.config.taskNotesOpenStatus)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                        }
+                        HStack {
+                            Text("Done status:")
+                                .foregroundColor(.secondary)
+                            TextField("done", text: $syncManager.config.taskNotesDoneStatus)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 100)
+                        }
+                    }
+
+                    Text("Comma-separated list of status values that mean \"completed\".")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } header: {
+                    Text("Status Mapping")
+                }
+
+                Section {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("Map your YAML frontmatter field names to Remindian properties.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        FieldMappingRow(label: "Title", binding: $syncManager.config.taskNotesFieldMapping.title, placeholder: "title")
+                        FieldMappingRow(label: "Status", binding: $syncManager.config.taskNotesFieldMapping.status, placeholder: "status")
+                        FieldMappingRow(label: "Priority", binding: $syncManager.config.taskNotesFieldMapping.priority, placeholder: "priority")
+                        FieldMappingRow(label: "Due Date", binding: $syncManager.config.taskNotesFieldMapping.due, placeholder: "due")
+                        FieldMappingRow(label: "Start Date", binding: $syncManager.config.taskNotesFieldMapping.scheduled, placeholder: "scheduled")
+                        FieldMappingRow(label: "Completed", binding: $syncManager.config.taskNotesFieldMapping.completedDate, placeholder: "completedDate")
+                        FieldMappingRow(label: "Tags", binding: $syncManager.config.taskNotesFieldMapping.tags, placeholder: "tags")
+                        FieldMappingRow(label: "Project", binding: $syncManager.config.taskNotesFieldMapping.project, placeholder: "project")
+                        FieldMappingRow(label: "Context", binding: $syncManager.config.taskNotesFieldMapping.context, placeholder: "context")
+                    }
+                } header: {
+                    Text("Field Mapping")
+                }
+
+                Section {
+                    HStack {
+                        Text("Reminders list from:")
+                            .foregroundColor(.secondary)
+                        Picker("", selection: $syncManager.config.taskNotesListField) {
+                            Text("Tags").tag("tags")
+                            Text("Project").tag("project")
+                            Text("Context").tag("context")
+                        }
+                        .pickerStyle(.segmented)
+                        .frame(width: 220)
+                    }
+
+                    Text("Which TaskNotes field determines the Reminders list/folder. Supports wikilinks (e.g., [[My Project]] \u{2192} My Project).")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                } header: {
+                    Text("List/Folder Source")
+                }
+            }
+            .padding()
+        }
+    }
+}
+
+/// Individual field mapping row for cleaner layout (#24)
+struct FieldMappingRow: View {
+    let label: String
+    @Binding var binding: String
+    let placeholder: String
+
+    var body: some View {
+        HStack {
+            Text(label)
+                .foregroundColor(.secondary)
+                .frame(width: 80, alignment: .trailing)
+            TextField(placeholder, text: $binding)
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 150)
+        }
+    }
+}
+
 // MARK: - Advanced Settings
 
 struct AdvancedSettingsView: View {
@@ -322,245 +515,6 @@ struct AdvancedSettingsView: View {
                         .foregroundColor(.secondary)
                         .padding(.leading, 20)
                 }
-
-                if syncManager.config.taskSourceType == .taskNotes {
-                    HStack {
-                        Text("Integration:")
-                            .foregroundColor(.secondary)
-                        Picker("", selection: $syncManager.config.taskNotesIntegrationMode) {
-                            Text("CLI (mtn)").tag("cli")
-                            Text("Direct Files").tag("file")
-                            Text("HTTP API").tag("http")
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 250)
-                    }
-                    .padding(.leading, 20)
-                    .onChange(of: syncManager.config.taskNotesIntegrationMode) { _ in
-                        syncManager.updateSourceAndDestination()
-                    }
-
-                    if syncManager.config.taskNotesIntegrationMode == "cli" {
-                        Text("Uses mdbase-tasknotes CLI. Works without Obsidian. Install: npm install -g mdbase-tasknotes")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 20)
-
-                        HStack {
-                            Text("mtn path:")
-                                .foregroundColor(.secondary)
-                            TextField("/opt/homebrew/bin/mtn", text: $syncManager.config.taskNotesMtnPath)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 200)
-                            Button("Browse...") {
-                                syncManager.selectMtnBinary()
-                            }
-                        }
-                        .padding(.leading, 20)
-
-                        if syncManager.config.taskNotesMtnPath.isEmpty {
-                            Text("Select the mtn binary to grant sandbox access. Run 'which mtn' in Terminal to find its location.")
-                                .font(.caption)
-                                .foregroundColor(.orange)
-                                .padding(.leading, 20)
-                        } else {
-                            HStack(spacing: 4) {
-                                Image(systemName: "checkmark.circle.fill")
-                                    .foregroundColor(.green)
-                                    .font(.caption)
-                                Text("mtn configured: \(syncManager.config.taskNotesMtnPath)")
-                            }
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 20)
-                        }
-                    } else if syncManager.config.taskNotesIntegrationMode == "http" {
-                        Text("Uses the TaskNotes plugin HTTP API. Requires Obsidian to be open.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 20)
-
-                        HStack {
-                            Text("API URL:")
-                                .foregroundColor(.secondary)
-                            TextField("http://localhost:8080", text: $syncManager.config.taskNotesApiUrl)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 250)
-                        }
-                        .padding(.leading, 20)
-                        .onChange(of: syncManager.config.taskNotesApiUrl) { _ in
-                            syncManager.updateSourceAndDestination()
-                        }
-
-                        Text("Base URL of the TaskNotes HTTP API. Check your plugin settings for the correct port.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 20)
-                    }
-
-                    HStack {
-                        Text("Tasks Folder:")
-                            .foregroundColor(.secondary)
-                        TextField("tasks", text: $syncManager.config.taskNotesFolder)
-                            .textFieldStyle(.roundedBorder)
-                            .frame(width: 200)
-                    }
-                    .padding(.leading, 20)
-
-                    Text("Relative path within your vault where TaskNotes stores task files. Leave empty for default (vault root).")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    Divider()
-                        .padding(.leading, 20)
-
-                    Text("Status Mapping")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    HStack {
-                        Text("Completed statuses:")
-                            .foregroundColor(.secondary)
-                        TextField("done, completed, cancelled", text: Binding(
-                            get: { syncManager.config.taskNotesCompletedStatuses.joined(separator: ", ") },
-                            set: { syncManager.config.taskNotesCompletedStatuses = $0.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty } }
-                        ))
-                        .textFieldStyle(.roundedBorder)
-                        .frame(width: 200)
-                    }
-                    .padding(.leading, 20)
-
-                    Text("Comma-separated list of status values that mean \"completed\". Tasks with these statuses will sync as done.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    HStack(spacing: 16) {
-                        HStack {
-                            Text("Open status:")
-                                .foregroundColor(.secondary)
-                            TextField("open", text: $syncManager.config.taskNotesOpenStatus)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 80)
-                        }
-                        HStack {
-                            Text("Done status:")
-                                .foregroundColor(.secondary)
-                            TextField("done", text: $syncManager.config.taskNotesDoneStatus)
-                                .textFieldStyle(.roundedBorder)
-                                .frame(width: 80)
-                        }
-                    }
-                    .padding(.leading, 20)
-
-                    Text("Status values written when marking tasks incomplete/complete from Reminders.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    Divider()
-                        .padding(.leading, 20)
-
-                    Text("Field Mapping")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    Group {
-                        HStack(spacing: 8) {
-                            LabeledContent {
-                                TextField("title", text: $syncManager.config.taskNotesFieldMapping.title)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Title:").foregroundColor(.secondary) }
-                            LabeledContent {
-                                TextField("status", text: $syncManager.config.taskNotesFieldMapping.status)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Status:").foregroundColor(.secondary) }
-                            LabeledContent {
-                                TextField("priority", text: $syncManager.config.taskNotesFieldMapping.priority)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Priority:").foregroundColor(.secondary) }
-                        }
-                        .padding(.leading, 20)
-
-                        HStack(spacing: 8) {
-                            LabeledContent {
-                                TextField("due", text: $syncManager.config.taskNotesFieldMapping.due)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Due:").foregroundColor(.secondary) }
-                            LabeledContent {
-                                TextField("scheduled", text: $syncManager.config.taskNotesFieldMapping.scheduled)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Start:").foregroundColor(.secondary) }
-                            LabeledContent {
-                                TextField("completedDate", text: $syncManager.config.taskNotesFieldMapping.completedDate)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Completed:").foregroundColor(.secondary) }
-                        }
-                        .padding(.leading, 20)
-
-                        HStack(spacing: 8) {
-                            LabeledContent {
-                                TextField("tags", text: $syncManager.config.taskNotesFieldMapping.tags)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Tags:").foregroundColor(.secondary) }
-                            LabeledContent {
-                                TextField("project", text: $syncManager.config.taskNotesFieldMapping.project)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Project:").foregroundColor(.secondary) }
-                            LabeledContent {
-                                TextField("context", text: $syncManager.config.taskNotesFieldMapping.context)
-                                    .textFieldStyle(.roundedBorder)
-                                    .frame(width: 90)
-                            } label: { Text("Context:").foregroundColor(.secondary) }
-                        }
-                        .padding(.leading, 20)
-                    }
-
-                    Text("Map your YAML frontmatter field names to Remindian properties. Change these if your TaskNotes uses custom field names.")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    Divider()
-                        .padding(.leading, 20)
-
-                    Text("List/Folder Source")
-                        .font(.caption)
-                        .fontWeight(.semibold)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-
-                    HStack {
-                        Text("Reminders list from:")
-                            .foregroundColor(.secondary)
-                        Picker("", selection: $syncManager.config.taskNotesListField) {
-                            Text("Tags").tag("tags")
-                            Text("Project").tag("project")
-                            Text("Context").tag("context")
-                        }
-                        .pickerStyle(.segmented)
-                        .frame(width: 220)
-                    }
-                    .padding(.leading, 20)
-
-                    Text("Which TaskNotes field determines the Reminders list. Supports wikilinks (e.g., [[My Project]] → My Project).")
-                        .font(.caption)
-                        .foregroundColor(.secondary)
-                        .padding(.leading, 20)
-                }
             } header: {
                 Text("Source & Destination")
             }
@@ -583,13 +537,6 @@ struct AdvancedSettingsView: View {
                         .frame(width: 120)
                     }
                     .padding(.leading, 20)
-
-                    if syncManager.config.maxCompletedTaskAgeDays > 0 {
-                        Text("Completed tasks older than \(syncManager.config.maxCompletedTaskAgeDays) days will not be synced. Prevents flooding with old completed tasks.")
-                            .font(.caption)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 20)
-                    }
                 }
 
                 Toggle("Add task link to Reminders", isOn: $syncManager.config.addTaskLinkToReminders)
@@ -609,10 +556,6 @@ struct AdvancedSettingsView: View {
                     }
                     .padding(.leading, 20)
                 }
-
-                Text("\(syncManager.config.taskSourceType.displayName) is the source of truth. Changes are synced to \(syncManager.config.taskDestinationType.displayName).")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             } header: {
                 Text("Sync Options")
             }
@@ -628,7 +571,7 @@ struct AdvancedSettingsView: View {
                     Text("Only scan")
                 }
 
-                Text("Comma-separated. If set, ONLY these folders will be scanned (plus root .md files). Leave empty to scan the entire vault.")
+                Text("Comma-separated. If set, ONLY these folders will be scanned. Leave empty to scan the entire vault.")
                     .font(.caption)
                     .foregroundColor(.secondary)
 
@@ -641,10 +584,6 @@ struct AdvancedSettingsView: View {
                 } label: {
                     Text("Exclude")
                 }
-
-                Text("Comma-separated. These folders are always skipped.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             } header: {
                 Text("Folder Filtering")
             }
@@ -660,10 +599,6 @@ struct AdvancedSettingsView: View {
                     Text("Only sync lists")
                 }
 
-                Text("Comma-separated Reminders list names. If set, only tasks in these lists will be synced. Leave empty to sync all lists.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
                 LabeledContent {
                     TextField("e.g. Groceries, Shared", text: Binding(
                         get: { syncManager.config.excludedRemindersLists.joined(separator: ", ") },
@@ -673,10 +608,6 @@ struct AdvancedSettingsView: View {
                 } label: {
                     Text("Exclude lists")
                 }
-
-                Text("Comma-separated Reminders list names to always exclude. Easier to manage than the whitelist when you only want to skip a few lists.")
-                    .font(.caption)
-                    .foregroundColor(.secondary)
             } header: {
                 Text("Reminders List Filtering")
             }
@@ -687,7 +618,7 @@ struct AdvancedSettingsView: View {
                 }
                 .foregroundColor(.red)
 
-                Text("This will clear all sync mappings. Use if sync is stuck or corrupted.")
+                Text("Clears all sync mappings, history, and logs. The next sync will treat all tasks as new.")
                     .font(.caption)
                     .foregroundColor(.secondary)
             } header: {
@@ -718,7 +649,7 @@ struct AdvancedSettingsView: View {
                 syncManager.resetSyncState()
             }
         } message: {
-            Text("This will clear all sync mappings. The next sync will treat all tasks as new.")
+            Text("This will clear all sync mappings, history, and logs. The next sync will treat all tasks as new and re-create them in Reminders.")
         }
     }
 }

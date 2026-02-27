@@ -701,7 +701,11 @@ class TaskNotesSource: TaskSource {
                 // Parse YAML fields
                 if let colonIndex = trimmed.firstIndex(of: ":") {
                     let key = String(trimmed[..<colonIndex]).trimmingCharacters(in: .whitespaces)
-                    let value = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+                    var value = String(trimmed[trimmed.index(after: colonIndex)...]).trimmingCharacters(in: .whitespaces)
+                    // Strip YAML quotes if present (#28)
+                    if (value.hasPrefix("\"") && value.hasSuffix("\"")) || (value.hasPrefix("'") && value.hasSuffix("'")) {
+                        value = String(value.dropFirst().dropLast())
+                    }
                     let keyLower = key.lowercased()
 
                     // Store all field values for custom list field lookup (#20)

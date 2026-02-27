@@ -50,6 +50,7 @@ class SyncManager: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var isFirstSync = true
     private var appearanceObservation: NSKeyValueObservation?
+    private var currentSyncTask: Task<Void, Never>?
 
     // Protocol-based source and destination
     private(set) var taskSource: TaskSource
@@ -164,6 +165,14 @@ class SyncManager: ObservableObject {
             if hasRemindersAccess {
                 refreshLists()
                 debugLog("[SyncManager] Available lists: \(availableLists)")
+
+                // Don't auto-sync on first launch before onboarding is complete (#25)
+                let hasOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+                if !hasOnboarded {
+                    debugLog("[SyncManager] Sync on launch skipped: onboarding not completed yet")
+                    return
+                }
+
                 if config.syncOnLaunch && !config.vaultPath.isEmpty {
                     debugLog("[SyncManager] Sync on launch triggered")
                     await performSync()
@@ -254,6 +263,16 @@ class SyncManager: ObservableObject {
         }
 
         isSyncing = false
+    }
+
+    /// Cancel a running sync operation (#26)
+    func cancelSync() {
+        guard isSyncing else { return }
+        currentSyncTask?.cancel()
+        syncEngine.requestCancellation()
+        isSyncing = false
+        statusMessage = "Sync cancelled"
+        debugLog("[SyncManager] Sync cancelled by user")
     }
 
     // MARK: - Conflict Resolution
@@ -523,7 +542,18 @@ class SyncManager: ObservableObject {
         lastSyncResult = nil
         lastSyncDate = nil
         pendingConflicts = []
-        statusMessage = "Sync state reset"
+        isFirstSync = true
+        syncLog.clear()
+        statusMessage = "Sync state reset — all mappings and history cleared"
+        debugLog("[SyncManager] Full sync state reset: mappings, log, and history cleared")
+
+        // Also clear the debug log to remove any stale references (#30)
+        let logURL = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first?
+            .appendingPathComponent("Remindian", isDirectory: true)
+            .appendingPathComponent("debug.log")
+        if let logURL = logURL {
+            try? "".write(to: logURL, atomically: true, encoding: .utf8)
+        }
     }
 
     func clearSyncLog() {
