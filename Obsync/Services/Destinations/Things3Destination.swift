@@ -5,7 +5,7 @@ import AppKit
 ///
 /// Architecture:
 /// - READ: AppleScript via NSAppleScript for task properties (id, name, notes, due date, status, tags, project, area)
-/// - CREATE: things:// URL scheme with JSON command via ThingsJSONCoder-style encoding
+/// - CREATE: AppleScript-based creation for reliable task ID retrieval
 /// - UPDATE: things:// URL scheme update command with auth-token
 /// - DETECT CHANGES: Poll via AppleScript (no push mechanism in Things 3)
 ///
@@ -95,7 +95,7 @@ class Things3Destination: TaskDestination {
                 if let projects = result.atIndex(1) {
                     for i in 1...max(1, projects.numberOfItems) {
                         if let name = projects.atIndex(i)?.stringValue {
-                            lists.append("📁 \(name)")
+                            lists.append("\u{1F4C1} \(name)")
                         }
                     }
                 }
@@ -103,7 +103,7 @@ class Things3Destination: TaskDestination {
                 if let areas = result.atIndex(2) {
                     for i in 1...max(1, areas.numberOfItems) {
                         if let name = areas.atIndex(i)?.stringValue {
-                            lists.append("📂 \(name)")
+                            lists.append("\u{1F4C2} \(name)")
                         }
                     }
                 }
@@ -118,67 +118,62 @@ class Things3Destination: TaskDestination {
     // MARK: - CRUD
 
     func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) throws -> String {
-        // Build the things:// URL for creating a task
-        var params: [String: String] = [
-            "title": task.title,
-            "show-quick-entry": "false"
-        ]
-
-        if let dueDate = task.dueDate {
-            params["deadline"] = formatDate(dueDate)
-        }
-
-        if let startDate = task.startDate {
-            params["when"] = formatDate(startDate)
-        }
-
-        if let notes = task.notes {
-            params["notes"] = notes
-        }
-
-        // Map tags
-        if !task.tags.isEmpty {
-            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-            params["tags"] = tagNames.joined(separator: ",")
-        }
-
-        // Map list to project or area
+        // Use AppleScript to create task — more reliable than URL scheme for getting the task ID back
         let cleanList = listName
-            .replacingOccurrences(of: "📁 ", with: "")
-            .replacingOccurrences(of: "📂 ", with: "")
-        if listName.hasPrefix("📁 ") {
-            params["list"] = cleanList
-        }
+            .replacingOccurrences(of: "\u{1F4C1} ", with: "")
+            .replacingOccurrences(of: "\u{1F4C2} ", with: "")
 
+        let escapedTitle = task.title.replacingOccurrences(of: "\"", with: "\\\"")
+        let escapedNotes = (task.notes ?? "").replacingOccurrences(of: "\"", with: "\\\"")
+
+        // Build properties
+        var properties = "name:\"\(escapedTitle)\""
+        if !escapedNotes.isEmpty {
+            properties += ", notes:\"\(escapedNotes)\""
+        }
+        if let dueDate = task.dueDate {
+            properties += ", due date:date \"\(formatAppleScriptDate(dueDate))\""
+        }
         if task.isCompleted {
-            params["completed"] = "true"
+            properties += ", status:completed"
         }
 
-        // Use x-callback-url to get the created task's ID
-        let callbackId = UUID().uuidString
-        params["x-success"] = "remindian://things-callback?id=\(callbackId)"
-
-        // Build URL
-        var components = URLComponents()
-        components.scheme = "things"
-        components.host = ""
-        components.path = "/add"
-        components.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
-
-        guard let url = components.url else {
-            throw Things3Error.invalidURL
+        // Build the creation script
+        var scriptSource: String
+        if listName.hasPrefix("\u{1F4C1} ") {
+            // Create in a project
+            let escapedProject = cleanList.replacingOccurrences(of: "\"", with: "\\\"")
+            scriptSource = """
+                tell application "Things3"
+                    set newTodo to make new to do with properties {\(properties)}
+                    move newTodo to project "\(escapedProject)"
+                    return id of newTodo
+                end tell
+            """
+        } else {
+            scriptSource = """
+                tell application "Things3"
+                    set newTodo to make new to do with properties {\(properties)}
+                    return id of newTodo
+                end tell
+            """
         }
 
-        // Open URL to create the task
-        NSWorkspace.shared.open(url)
+        let script = NSAppleScript(source: scriptSource)
+        var error: NSDictionary?
+        guard let result = script?.executeAndReturnError(&error),
+              let taskId = result.stringValue, !taskId.isEmpty else {
+            let message = (error?[NSAppleScript.errorMessage] as? String) ?? "Unknown error"
+            throw Things3Error.appleScriptError("Failed to create task: \(message)")
+        }
 
-        // Since x-callback-url is async and we can't easily wait for it in this context,
-        // we'll use AppleScript to find the just-created task by title
-        // Wait briefly for Things to process
-        Thread.sleep(forTimeInterval: 0.5)
+        // Set tags via URL scheme if auth token is available (AppleScript can't set tags on creation)
+        if !task.tags.isEmpty && !authToken.isEmpty {
+            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+            try updateTaskTags(withId: taskId, tags: tagNames)
+        }
 
-        // Find the task ID via AppleScript
-        let taskId = try findTaskIdByTitle(task.title)
+        debugLog("[Things3] Created task \"\(task.title)\" with id=\(taskId)")
         return taskId
     }
 
@@ -208,6 +203,12 @@ class Things3Destination: TaskDestination {
             params["notes"] = notes
         }
 
+        // Sync tags (#32 — tag changes were not being sent to Things 3)
+        if !task.tags.isEmpty {
+            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+            params["tags"] = tagNames.joined(separator: ",")
+        }
+
         var components = URLComponents()
         components.scheme = "things"
         components.host = ""
@@ -218,7 +219,10 @@ class Things3Destination: TaskDestination {
             throw Things3Error.invalidURL
         }
 
-        NSWorkspace.shared.open(url)
+        let success = NSWorkspace.shared.open(url)
+        if !success {
+            throw Things3Error.urlSchemeNotHandled
+        }
     }
 
     func moveTask(withId id: String, toList listName: String) throws {
@@ -227,8 +231,8 @@ class Things3Destination: TaskDestination {
         }
 
         let cleanList = listName
-            .replacingOccurrences(of: "📁 ", with: "")
-            .replacingOccurrences(of: "📂 ", with: "")
+            .replacingOccurrences(of: "\u{1F4C1} ", with: "")
+            .replacingOccurrences(of: "\u{1F4C2} ", with: "")
 
         var params: [String: String] = [
             "id": id,
@@ -246,7 +250,10 @@ class Things3Destination: TaskDestination {
             throw Things3Error.invalidURL
         }
 
-        NSWorkspace.shared.open(url)
+        let success = NSWorkspace.shared.open(url)
+        if !success {
+            throw Things3Error.urlSchemeNotHandled
+        }
     }
 
     func deleteTask(withId id: String) throws {
@@ -274,6 +281,26 @@ class Things3Destination: TaskDestination {
     }
 
     // MARK: - AppleScript Helpers
+
+    /// Update tags on an existing task via URL scheme.
+    private func updateTaskTags(withId id: String, tags: [String]) throws {
+        guard !authToken.isEmpty else { return }
+
+        var params: [String: String] = [
+            "id": id,
+            "auth-token": authToken,
+            "tags": tags.joined(separator: ",")
+        ]
+
+        var components = URLComponents()
+        components.scheme = "things"
+        components.host = ""
+        components.path = "/update"
+        components.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
+
+        guard let url = components.url else { return }
+        NSWorkspace.shared.open(url)
+    }
 
     /// Fetch tasks from a specific Things 3 list via AppleScript.
     private func fetchTasksFromList(_ listName: String) throws -> [SyncTask] {
@@ -365,35 +392,6 @@ class Things3Destination: TaskDestination {
         return tasks
     }
 
-    /// Find a task's Things ID by its title (used after creating via URL scheme).
-    private func findTaskIdByTitle(_ title: String) throws -> String {
-        let escapedTitle = title.replacingOccurrences(of: "\"", with: "\\\"")
-        let script = NSAppleScript(source: """
-            tell application "Things3"
-                repeat with toDo in to dos of list "Inbox"
-                    if name of toDo is "\(escapedTitle)" then
-                        return id of toDo
-                    end if
-                end repeat
-                repeat with toDo in to dos of list "Today"
-                    if name of toDo is "\(escapedTitle)" then
-                        return id of toDo
-                    end if
-                end repeat
-                return "not-found"
-            end tell
-        """)
-
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error),
-              let taskId = result.stringValue,
-              taskId != "not-found" else {
-            throw Things3Error.taskNotFound(title)
-        }
-
-        return taskId
-    }
-
     private func isThings3Installed() -> Bool {
         return NSWorkspace.shared.urlForApplication(withBundleIdentifier: "com.culturedcode.ThingsMac") != nil
     }
@@ -401,6 +399,14 @@ class Things3Destination: TaskDestination {
     private func formatDate(_ date: Date) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+
+    /// Format date for AppleScript date literal.
+    private func formatAppleScriptDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMMM d, yyyy"
+        formatter.locale = Locale(identifier: "en_US")
         return formatter.string(from: date)
     }
 
@@ -428,6 +434,7 @@ enum Things3Error: LocalizedError {
     case authTokenRequired
     case invalidURL
     case taskNotFound(String)
+    case urlSchemeNotHandled
 
     var errorDescription: String? {
         switch self {
@@ -443,6 +450,8 @@ enum Things3Error: LocalizedError {
             return "Failed to build Things URL"
         case .taskNotFound(let title):
             return "Could not find Things task: \(title)"
+        case .urlSchemeNotHandled:
+            return "Things 3 URL scheme failed. Make sure Things 3 is installed and the things:// URL scheme is registered."
         }
     }
 }

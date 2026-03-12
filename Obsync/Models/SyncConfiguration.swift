@@ -86,6 +86,9 @@ class SyncConfiguration: ObservableObject, Codable {
     // MARK: - TaskNotes List Field (#20)
     @Published var taskNotesListField: String  // Which field determines Reminders list ("tags", "project", "context", or custom)
 
+    // MARK: - Global Filter (#36)
+    @Published var globalFilter: String  // Text that must appear in the file/section for tasks to be synced (e.g., "#task" for Obsidian Tasks global filter)
+
     enum TaskSourceType: String, Codable, CaseIterable {
         case obsidianTasks = "obsidianTasks"
         case taskNotes = "taskNotes"
@@ -139,6 +142,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
         case taskNotesFieldMapping, taskNotesListField
+        case globalFilter
     }
 
     init(
@@ -186,7 +190,8 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesOpenStatus: String = "open",
         taskNotesDoneStatus: String = "done",
         taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
-        taskNotesListField: String = "tags"
+        taskNotesListField: String = "tags",
+        globalFilter: String = ""
     ) {
         self.vaultPath = vaultPath
         self.syncIntervalMinutes = syncIntervalMinutes
@@ -233,6 +238,7 @@ class SyncConfiguration: ObservableObject, Codable {
         self.taskNotesDoneStatus = taskNotesDoneStatus
         self.taskNotesFieldMapping = taskNotesFieldMapping
         self.taskNotesListField = taskNotesListField
+        self.globalFilter = globalFilter
     }
 
     required init(from decoder: Decoder) throws {
@@ -282,6 +288,7 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesDoneStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesDoneStatus) ?? "done"
         taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
         taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
+        globalFilter = try container.decodeIfPresent(String.self, forKey: .globalFilter) ?? ""
     }
 
     func encode(to encoder: Encoder) throws {
@@ -331,6 +338,7 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)
         try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
         try container.encode(taskNotesListField, forKey: .taskNotesListField)
+        try container.encode(globalFilter, forKey: .globalFilter)
     }
 
     // MARK: - Persistence

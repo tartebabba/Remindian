@@ -4,6 +4,29 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v3.7.0 (March 2026)
+
+### Bug Fixes
+- **Fixed Things 3 duplicate syncing** — Task creation switched from URL scheme to AppleScript, which returns the task ID directly. Eliminates the unreliable title-based search that only checked Inbox/Today, causing duplicates when Things 3 routed tasks to projects or other lists
+- **Fixed Things 3 "no app to open URL scheme" errors** — `NSWorkspace.shared.open(url)` return value is now checked and throws a clear error instead of silently failing
+- **Fixed Things 3 tag changes not syncing** (#32) — `updateTask()` was not including tags in the URL scheme parameters, so tag/project changes from Obsidian never propagated to Things 3
+- **Fixed Settings UX for default list vs project routing** (#33) — Added contextual help text explaining how the default list interacts with TaskNotes project/context routing. The default list is now clearly labeled as a fallback
+
+### New Features
+- **Obsidian Tasks global filter** (#36) — New "Global filter" field in Advanced settings. Only syncs tasks whose line contains the specified text (e.g., `#task`), matching the Obsidian Tasks plugin's global filter setting
+
+### Technical Changes
+- `Things3Destination.createTask()` rewritten to use AppleScript instead of URL scheme for reliable task ID retrieval
+- `Things3Destination.updateTask()` now sends tags in URL scheme params
+- New `Things3Error.urlSchemeNotHandled` error case for URL scheme failures
+- New `updateTaskTags(withId:tags:)` helper for setting tags after AppleScript creation
+- New `formatAppleScriptDate()` helper for AppleScript date literals
+- Removed `findTaskIdByTitle()` — no longer needed with AppleScript-based creation
+- `SyncConfiguration.globalFilter` property added with full encode/decode support
+- `ObsidianTasksSource.scanTasks()` applies global filter post-scan
+
+---
+
 ## v3.6.0 (February 2026)
 
 ### Bug Fixes

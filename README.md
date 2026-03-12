@@ -20,7 +20,7 @@ Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/t
 
 ## Download
 
-**[Download Remindian v3.6.0](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
+**[Download Remindian v3.7.0](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
 
 > Since the app is not notarized, right-click the app and select **Open** on first launch to bypass Gatekeeper. Remindian includes a built-in auto-updater that checks for new versions on launch and every 24 hours.
 

@@ -200,6 +200,16 @@ struct GeneralSettingsView: View {
                         syncManager.refreshLists()
                     }
                     .font(.caption)
+
+                    if syncManager.config.taskSourceType == .taskNotes && syncManager.config.taskNotesListField != "tags" {
+                        Text("Tasks with a \(syncManager.config.taskNotesListField) field will go to that list instead. This is the fallback for tasks without one.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    } else {
+                        Text("Tasks with a matching tag mapping go to that list. This is the fallback for untagged tasks.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                    }
                 } header: {
                     Text("Default List")
                 }
@@ -502,7 +512,7 @@ struct TaskNotesSettingsView: View {
                         .frame(width: 250)
                     }
 
-                    Text("Which TaskNotes field determines the Reminders list/folder. Supports wikilinks (e.g., [[My Project]] \u{2192} My Project).")
+                    Text("Which TaskNotes field determines the Reminders list/folder. Supports wikilinks (e.g., [[My Project]] \u{2192} My Project). Tasks without a value fall back to the Default List in General.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                 } header: {
@@ -577,6 +587,20 @@ struct AdvancedSettingsView: View {
                             .foregroundColor(.secondary)
                     }
                     .padding(.leading, 20)
+                }
+
+                if syncManager.config.taskSourceType == .obsidianTasks {
+                    LabeledContent {
+                        TextField("e.g. #task", text: $syncManager.config.globalFilter)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 200)
+                    } label: {
+                        Text("Global filter")
+                    }
+
+                    Text("Only sync tasks whose line contains this text. Matches the Obsidian Tasks plugin global filter setting. Leave empty to sync all tasks.")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             } header: {
                 Text("Sync Options")

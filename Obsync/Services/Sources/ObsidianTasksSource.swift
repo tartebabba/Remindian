@@ -9,11 +9,24 @@ class ObsidianTasksSource: TaskSource {
     private let backupService = FileBackupService.shared
 
     func scanTasks(config: SyncConfiguration) throws -> [SyncTask] {
-        return try obsidianService.scanVault(
+        var tasks = try obsidianService.scanVault(
             at: config.vaultPath,
             excludedFolders: config.excludedFolders,
             includedFolders: config.includedFolders
         )
+
+        // Apply global filter (#36) — only keep tasks whose original line contains the filter text
+        let filter = config.globalFilter.trimmingCharacters(in: .whitespaces)
+        if !filter.isEmpty {
+            let before = tasks.count
+            tasks = tasks.filter { task in
+                guard let originalLine = task.obsidianSource?.originalLine else { return false }
+                return originalLine.contains(filter)
+            }
+            debugLog("[ObsidianTasks] Global filter \"\(filter)\": \(before) → \(tasks.count) tasks")
+        }
+
+        return tasks
     }
 
     func generateTaskId(for task: SyncTask) -> String {
