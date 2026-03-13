@@ -10,9 +10,9 @@
 
 ---
 
-A native macOS menu-bar app that syncs your tasks between [Obsidian](https://obsidian.md), [Apple Reminders](https://support.apple.com/guide/reminders/welcome/mac), and [Things 3](https://culturedcode.com/things/).
+A native macOS menu-bar app that syncs your tasks between [Obsidian](https://obsidian.md) and your task manager of choice — [Apple Reminders](https://support.apple.com/guide/reminders/welcome/mac), [Things 3](https://culturedcode.com/things/), [Todoist](https://todoist.com), or [TickTick](https://ticktick.com).
 
-Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) plugin format and the [TaskNotes](https://github.com/nicolo/obsidian-tasknotes) plugin — and two destinations — Apple Reminders and Things 3. Mix and match to build your ideal workflow.
+Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/tasks/Introduction) plugin format and the [TaskNotes](https://github.com/nicolo/obsidian-tasknotes) plugin — and four destinations. Mix and match to build your ideal workflow.
 
 **Your vault is the source of truth.** Tasks flow from Obsidian into your chosen destination. Completion status, due dates, start dates, priority, and tags can optionally be written back using surgical, metadata-preserving edits.
 
@@ -20,7 +20,7 @@ Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/t
 
 ## Download
 
-**[Download Remindian v3.7.0](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
+**[Download Remindian v4.0.0](https://github.com/Santofer/Remindian/releases/latest)** — Universal Binary (Apple Silicon + Intel), macOS 13.0+
 
 > Since the app is not notarized, right-click the app and select **Open** on first launch to bypass Gatekeeper. Remindian includes a built-in auto-updater that checks for new versions on launch and every 24 hours.
 
@@ -33,6 +33,8 @@ Supports two task sources — the [Obsidian Tasks](https://publish.obsidian.md/t
 ### Task Destinations
 - **Apple Reminders** — Syncs to any Reminders list via EventKit
 - **Things 3** — Syncs to Things 3 via AppleScript (read) and URL scheme (write)
+- **Todoist** — Syncs to Todoist via REST API with personal API token auth, priority and label mapping
+- **TickTick** — Syncs to TickTick via Open API with OAuth 2.0, priority and project mapping
 
 ### Sync Features
 - **Two-way sync** — Tasks flow from your source to your destination; completions, due dates, start dates, priority, and tag changes sync back
@@ -102,7 +104,7 @@ project: "[[My Project]]"
 Description of the task...
 ```
 
-### Sync to Apple Reminders or Things 3
+### Sync to Apple Reminders, Things 3, Todoist, or TickTick
 
 Each task is synced to your chosen destination with its due date, priority, and tags. When you complete a task, the completion is written back to Obsidian as a surgical edit — only the checkbox and completion date are modified, preserving all other metadata.
 

@@ -89,6 +89,14 @@ class SyncConfiguration: ObservableObject, Codable {
     // MARK: - Global Filter (#36)
     @Published var globalFilter: String  // Text that must appear in the file/section for tasks to be synced (e.g., "#task" for Obsidian Tasks global filter)
 
+    // MARK: - Todoist
+    @Published var todoistApiToken: String
+
+    // MARK: - TickTick (OAuth)
+    @Published var tickTickAccessToken: String
+    @Published var tickTickRefreshToken: String
+    @Published var tickTickTokenExpiry: Date?
+
     enum TaskSourceType: String, Codable, CaseIterable {
         case obsidianTasks = "obsidianTasks"
         case taskNotes = "taskNotes"
@@ -104,11 +112,15 @@ class SyncConfiguration: ObservableObject, Codable {
     enum TaskDestinationType: String, Codable, CaseIterable {
         case appleReminders = "appleReminders"
         case things3 = "things3"
+        case todoist = "todoist"
+        case tickTick = "tickTick"
 
         var displayName: String {
             switch self {
             case .appleReminders: return "Apple Reminders"
             case .things3: return "Things 3"
+            case .todoist: return "Todoist"
+            case .tickTick: return "TickTick"
             }
         }
     }
@@ -143,6 +155,8 @@ class SyncConfiguration: ObservableObject, Codable {
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
         case taskNotesFieldMapping, taskNotesListField
         case globalFilter
+        case todoistApiToken
+        case tickTickAccessToken, tickTickRefreshToken, tickTickTokenExpiry
     }
 
     init(
@@ -191,7 +205,11 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesDoneStatus: String = "done",
         taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
         taskNotesListField: String = "tags",
-        globalFilter: String = ""
+        globalFilter: String = "",
+        todoistApiToken: String = "",
+        tickTickAccessToken: String = "",
+        tickTickRefreshToken: String = "",
+        tickTickTokenExpiry: Date? = nil
     ) {
         self.vaultPath = vaultPath
         self.syncIntervalMinutes = syncIntervalMinutes
@@ -239,6 +257,10 @@ class SyncConfiguration: ObservableObject, Codable {
         self.taskNotesFieldMapping = taskNotesFieldMapping
         self.taskNotesListField = taskNotesListField
         self.globalFilter = globalFilter
+        self.todoistApiToken = todoistApiToken
+        self.tickTickAccessToken = tickTickAccessToken
+        self.tickTickRefreshToken = tickTickRefreshToken
+        self.tickTickTokenExpiry = tickTickTokenExpiry
     }
 
     required init(from decoder: Decoder) throws {
@@ -289,6 +311,10 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
         taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
         globalFilter = try container.decodeIfPresent(String.self, forKey: .globalFilter) ?? ""
+        todoistApiToken = try container.decodeIfPresent(String.self, forKey: .todoistApiToken) ?? ""
+        tickTickAccessToken = try container.decodeIfPresent(String.self, forKey: .tickTickAccessToken) ?? ""
+        tickTickRefreshToken = try container.decodeIfPresent(String.self, forKey: .tickTickRefreshToken) ?? ""
+        tickTickTokenExpiry = try container.decodeIfPresent(Date.self, forKey: .tickTickTokenExpiry)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -339,6 +365,10 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
         try container.encode(taskNotesListField, forKey: .taskNotesListField)
         try container.encode(globalFilter, forKey: .globalFilter)
+        try container.encode(todoistApiToken, forKey: .todoistApiToken)
+        try container.encode(tickTickAccessToken, forKey: .tickTickAccessToken)
+        try container.encode(tickTickRefreshToken, forKey: .tickTickRefreshToken)
+        try container.encodeIfPresent(tickTickTokenExpiry, forKey: .tickTickTokenExpiry)
     }
 
     // MARK: - Persistence

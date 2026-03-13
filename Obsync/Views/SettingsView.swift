@@ -79,6 +79,57 @@ struct GeneralSettingsView: View {
                             .foregroundColor(.secondary)
                             .padding(.leading, 20)
                     }
+
+                    if syncManager.config.taskDestinationType == .todoist {
+                        HStack {
+                            Text("API Token:")
+                                .foregroundColor(.secondary)
+                            SecureField("From Todoist Settings > Integrations", text: $syncManager.config.todoistApiToken)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                        .padding(.leading, 20)
+
+                        Text("Get your token from Todoist > Settings > Integrations > Developer.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
+
+                    if syncManager.config.taskDestinationType == .tickTick {
+                        if syncManager.config.tickTickAccessToken.isEmpty {
+                            Button("Connect TickTick") {
+                                syncManager.connectTickTick()
+                            }
+                            .padding(.leading, 20)
+
+                            Text("Authorize Remindian to access your TickTick account via OAuth.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 20)
+                        } else {
+                            HStack {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(.green)
+                                Text("Connected to TickTick")
+                                    .foregroundColor(.secondary)
+                                Spacer()
+                                Button("Disconnect") {
+                                    syncManager.config.tickTickAccessToken = ""
+                                    syncManager.config.tickTickRefreshToken = ""
+                                    syncManager.config.tickTickTokenExpiry = nil
+                                    syncManager.updateSourceAndDestination()
+                                }
+                                .font(.caption)
+                            }
+                            .padding(.leading, 20)
+                        }
+
+                        Text("Note: TickTick's API does not support tags. Tags from Obsidian will not sync to TickTick.")
+                            .font(.caption)
+                            .foregroundColor(.orange)
+                            .padding(.leading, 20)
+                    }
                 } header: {
                     Text("Source & Destination")
                 }

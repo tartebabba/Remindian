@@ -4,6 +4,25 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.0.0-beta (March 2026)
+
+### New Features
+- **Todoist destination** — Sync tasks to Todoist via the REST API v1. Supports personal API token auth, project mapping, priority sync (high/medium/low), label/tag sync, and due date with optional time
+- **TickTick destination** — Sync tasks to TickTick via the Open API v1. Uses OAuth 2.0 with automatic token refresh. Supports project mapping, priority sync, and due dates. Note: TickTick's Open API does not support tags/labels
+- **Custom URL scheme** — `remindian://` URL scheme for OAuth callbacks (TickTick authorization flow)
+
+### Technical Changes
+- **Protocol evolution** — All `TaskDestination` CRUD methods (`createTask`, `updateTask`, `moveTask`, `deleteTask`, `getAvailableLists`) are now `async throws`, enabling REST API destinations alongside existing local destinations
+- New `TodoistDestination` with full CRUD, rate limit retry (429 + Retry-After), priority/label/date mapping
+- New `TickTickDestination` with OAuth 2.0 token management, project iteration (no global task endpoint), project-scoped operations
+- New `OAuthCallbackHandler` singleton for `remindian://` URL scheme routing
+- `SyncManager` gains `connectTickTick()`, `handleTickTickOAuthCode()`, `disconnectTickTick()` for TickTick OAuth lifecycle
+- `SyncConfiguration` gains `.todoist` and `.tickTick` destination types with associated token/credential storage
+- `SyncEngine.resolveConflict()` now `async throws` to match protocol changes
+- Settings UI updated with Todoist API token field and TickTick connect/disconnect button
+
+---
+
 ## v3.7.0 (March 2026)
 
 ### Bug Fixes

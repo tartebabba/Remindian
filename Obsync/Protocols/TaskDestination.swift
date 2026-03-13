@@ -13,20 +13,20 @@ protocol TaskDestination {
     func fetchAllTasks() async throws -> [SyncTask]
 
     /// Get all available lists/projects in the destination.
-    func getAvailableLists() -> [String]
+    func getAvailableLists() async -> [String]
 
     /// Create a new task in the destination.
     /// Returns the destination's identifier for the created task.
-    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) throws -> String
+    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) async throws -> String
 
     /// Update an existing task in the destination.
-    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) throws
+    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) async throws
 
     /// Move a task to a different list/project.
-    func moveTask(withId id: String, toList listName: String) throws
+    func moveTask(withId id: String, toList listName: String) async throws
 
     /// Delete a task from the destination.
-    func deleteTask(withId id: String) throws
+    func deleteTask(withId id: String) async throws
 
     /// Refresh the destination's internal state (e.g., after external changes).
     func refresh()

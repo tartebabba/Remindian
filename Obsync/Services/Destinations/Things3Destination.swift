@@ -64,7 +64,7 @@ class Things3Destination: TaskDestination {
         return tasks
     }
 
-    func getAvailableLists() -> [String] {
+    func getAvailableLists() async -> [String] {
         // Refresh cache every 60 seconds
         if let lastRefresh = lastListRefresh, Date().timeIntervalSince(lastRefresh) < 60 {
             return cachedLists
@@ -117,7 +117,7 @@ class Things3Destination: TaskDestination {
 
     // MARK: - CRUD
 
-    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) throws -> String {
+    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) async throws -> String {
         // Use AppleScript to create task — more reliable than URL scheme for getting the task ID back
         let cleanList = listName
             .replacingOccurrences(of: "\u{1F4C1} ", with: "")
@@ -177,7 +177,7 @@ class Things3Destination: TaskDestination {
         return taskId
     }
 
-    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) throws {
+    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) async throws {
         guard !authToken.isEmpty else {
             throw Things3Error.authTokenRequired
         }
@@ -225,7 +225,7 @@ class Things3Destination: TaskDestination {
         }
     }
 
-    func moveTask(withId id: String, toList listName: String) throws {
+    func moveTask(withId id: String, toList listName: String) async throws {
         guard !authToken.isEmpty else {
             throw Things3Error.authTokenRequired
         }
@@ -256,7 +256,7 @@ class Things3Destination: TaskDestination {
         }
     }
 
-    func deleteTask(withId id: String) throws {
+    func deleteTask(withId id: String) async throws {
         // Things 3 URL scheme doesn't support deletion.
         // Use AppleScript to move to Trash instead.
         let script = NSAppleScript(source: """

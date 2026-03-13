@@ -1,0 +1,330 @@
+import Foundation
+
+/// Todoist destination using the REST API v1.
+///
+/// Architecture:
+/// - AUTH: Personal API token (Bearer token in Authorization header)
+/// - READ: GET /tasks (list all), GET /projects (list projects)
+/// - CREATE: POST /tasks
+/// - UPDATE: POST /tasks/{id}
+/// - COMPLETE: POST /tasks/{id}/close
+/// - DELETE: DELETE /tasks/{id}
+/// - MOVE: POST /tasks/{id}/move
+///
+/// API docs: https://developer.todoist.com/api/v1/
+class TodoistDestination: TaskDestination {
+    let destinationName = "Todoist"
+
+    var apiToken: String = ""
+
+    private let baseURL = "https://api.todoist.com/api/v1"
+    private let session = URLSession.shared
+
+    // Cache
+    private var cachedProjects: [TodoistProject] = []
+    private var lastProjectRefresh: Date?
+
+    // MARK: - Authorization
+
+    func requestAccess() async throws -> Bool {
+        guard !apiToken.isEmpty else {
+            throw TodoistError.invalidToken
+        }
+        // Verify token by fetching one task
+        let (_, response) = try await makeRequest(method: "GET", path: "/tasks?limit=1")
+        return response.statusCode == 200
+    }
+
+    // MARK: - Fetching
+
+    func fetchAllTasks() async throws -> [SyncTask] {
+        let (data, _) = try await makeRequest(method: "GET", path: "/tasks")
+        let todoistTasks = try JSONDecoder().decode([TodoistTask].self, from: data)
+        let projects = try await fetchProjects()
+        let projectMap = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0.name) })
+
+        return todoistTasks.map { task in
+            mapToSyncTask(task, projectMap: projectMap)
+        }
+    }
+
+    func getAvailableLists() async -> [String] {
+        if let lastRefresh = lastProjectRefresh, Date().timeIntervalSince(lastRefresh) < 60 {
+            return cachedProjects.map { $0.name }
+        }
+        do {
+            let projects = try await fetchProjects()
+            cachedProjects = projects
+            lastProjectRefresh = Date()
+            return projects.map { $0.name }
+        } catch {
+            debugLog("[Todoist] Failed to fetch projects: \(error)")
+            return cachedProjects.map { $0.name }
+        }
+    }
+
+    // MARK: - CRUD
+
+    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) async throws -> String {
+        let projectId = try await resolveProjectId(for: listName)
+
+        var body: [String: Any] = [
+            "content": task.title,
+            "priority": mapPriorityToTodoist(task.priority)
+        ]
+
+        if let projectId = projectId {
+            body["project_id"] = projectId
+        }
+
+        if let dueDate = task.dueDate {
+            if config.includeDueTime {
+                body["due_datetime"] = ISO8601DateFormatter().string(from: dueDate)
+            } else {
+                body["due_date"] = formatDate(dueDate)
+            }
+        }
+
+        if let notes = task.notes, !notes.isEmpty {
+            body["description"] = notes
+        }
+
+        let labels = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+        if !labels.isEmpty {
+            body["labels"] = labels
+        }
+
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        let (data, _) = try await makeRequest(method: "POST", path: "/tasks", body: jsonData)
+        let created = try JSONDecoder().decode(TodoistTask.self, from: data)
+
+        if task.isCompleted {
+            try await closeTask(id: created.id)
+        }
+
+        debugLog("[Todoist] Created task \"\(task.title)\" with id=\(created.id)")
+        return created.id
+    }
+
+    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) async throws {
+        var body: [String: Any] = [
+            "content": task.title,
+            "priority": mapPriorityToTodoist(task.priority)
+        ]
+
+        if let dueDate = task.dueDate {
+            if config.includeDueTime {
+                body["due_datetime"] = ISO8601DateFormatter().string(from: dueDate)
+            } else {
+                body["due_date"] = formatDate(dueDate)
+            }
+        } else {
+            body["due_string"] = NSNull()
+        }
+
+        if let notes = task.notes {
+            body["description"] = notes
+        }
+
+        let labels = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+        body["labels"] = labels
+
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        try await makeRequest(method: "POST", path: "/tasks/\(id)", body: jsonData)
+
+        if task.isCompleted {
+            try await closeTask(id: id)
+        }
+    }
+
+    func moveTask(withId id: String, toList listName: String) async throws {
+        guard let projectId = try await resolveProjectId(for: listName) else {
+            throw TodoistError.projectNotFound(listName)
+        }
+
+        let body: [String: Any] = ["project_id": projectId]
+        let jsonData = try JSONSerialization.data(withJSONObject: body)
+        try await makeRequest(method: "POST", path: "/tasks/\(id)/move", body: jsonData)
+    }
+
+    func deleteTask(withId id: String) async throws {
+        try await makeRequest(method: "DELETE", path: "/tasks/\(id)")
+    }
+
+    func refresh() {
+        cachedProjects = []
+        lastProjectRefresh = nil
+    }
+
+    // MARK: - Private Helpers
+
+    private func closeTask(id: String) async throws {
+        try await makeRequest(method: "POST", path: "/tasks/\(id)/close")
+    }
+
+    private func fetchProjects() async throws -> [TodoistProject] {
+        let (data, _) = try await makeRequest(method: "GET", path: "/projects")
+        return try JSONDecoder().decode([TodoistProject].self, from: data)
+    }
+
+    private func resolveProjectId(for listName: String) async throws -> String? {
+        let projects = try await fetchProjects()
+        return projects.first(where: { $0.name.lowercased() == listName.lowercased() })?.id
+    }
+
+    @discardableResult
+    private func makeRequest(method: String, path: String, body: Data? = nil, retryCount: Int = 0) async throws -> (Data, HTTPURLResponse) {
+        guard !apiToken.isEmpty else {
+            throw TodoistError.invalidToken
+        }
+
+        let url = URL(string: baseURL + path)!
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+        request.timeoutInterval = 30
+
+        if let body = body {
+            request.httpBody = body
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TodoistError.apiError(0, "Invalid response")
+        }
+
+        switch httpResponse.statusCode {
+        case 200...299:
+            return (data, httpResponse)
+        case 204:
+            return (Data(), httpResponse)
+        case 401, 403:
+            throw TodoistError.invalidToken
+        case 429:
+            if retryCount < 2 {
+                let retryAfter = Double(httpResponse.value(forHTTPHeaderField: "Retry-After") ?? "5") ?? 5
+                try await Task.sleep(nanoseconds: UInt64(retryAfter * 1_000_000_000))
+                return try await makeRequest(method: method, path: path, body: body, retryCount: retryCount + 1)
+            }
+            throw TodoistError.rateLimited
+        default:
+            let snippet = String(data: data.prefix(200), encoding: .utf8) ?? ""
+            throw TodoistError.apiError(httpResponse.statusCode, snippet)
+        }
+    }
+
+    // MARK: - Mapping
+
+    private func mapToSyncTask(_ task: TodoistTask, projectMap: [String: String]) -> SyncTask {
+        let priority = mapPriorityFromTodoist(task.priority)
+        let tags = task.labels.map { "#\($0)" }
+        let dueDate = parseDueDate(task.due)
+        let projectName = projectMap[task.projectId] ?? ""
+
+        return SyncTask(
+            title: task.content,
+            isCompleted: task.isCompleted,
+            priority: priority,
+            dueDate: dueDate,
+            tags: tags,
+            targetList: projectName.isEmpty ? nil : projectName,
+            notes: task.description.isEmpty ? nil : task.description,
+            remindersId: task.id,
+            lastModified: Date()
+        )
+    }
+
+    private func mapPriorityToTodoist(_ priority: SyncTask.Priority) -> Int {
+        switch priority {
+        case .high: return 4
+        case .medium: return 3
+        case .low: return 2
+        case .none: return 1
+        }
+    }
+
+    private func mapPriorityFromTodoist(_ priority: Int) -> SyncTask.Priority {
+        switch priority {
+        case 4: return .high
+        case 3: return .medium
+        case 2: return .low
+        default: return .none
+        }
+    }
+
+    private func parseDueDate(_ due: TodoistDue?) -> Date? {
+        guard let due = due else { return nil }
+        if let datetime = due.datetime {
+            return ISO8601DateFormatter().date(from: datetime)
+        }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.date(from: due.date)
+    }
+
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - API Models
+
+private struct TodoistTask: Codable {
+    let id: String
+    let content: String
+    let description: String
+    let priority: Int
+    let labels: [String]
+    let due: TodoistDue?
+    let projectId: String
+    let isCompleted: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id, content, description, priority, labels, due
+        case projectId = "project_id"
+        case isCompleted = "is_completed"
+    }
+}
+
+private struct TodoistProject: Codable {
+    let id: String
+    let name: String
+}
+
+private struct TodoistDue: Codable {
+    let date: String
+    let datetime: String?
+    let string: String?
+    let isRecurring: Bool?
+
+    enum CodingKeys: String, CodingKey {
+        case date, datetime, string
+        case isRecurring = "is_recurring"
+    }
+}
+
+// MARK: - Errors
+
+enum TodoistError: LocalizedError {
+    case invalidToken
+    case rateLimited
+    case apiError(Int, String)
+    case projectNotFound(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidToken:
+            return "Invalid Todoist API token. Get your token from Todoist > Settings > Integrations > Developer."
+        case .rateLimited:
+            return "Todoist API rate limit exceeded. Please wait a moment and try again."
+        case .apiError(let code, let message):
+            return "Todoist API error (HTTP \(code)): \(message)"
+        case .projectNotFound(let name):
+            return "Todoist project not found: \(name)"
+        }
+    }
+}

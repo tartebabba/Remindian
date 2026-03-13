@@ -11,6 +11,9 @@ struct RemindianApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(syncManager)
+                .onOpenURL { url in
+                    OAuthCallbackHandler.shared.handle(url: url)
+                }
         }
         .windowStyle(.hiddenTitleBar)
         .windowResizability(.contentSize)
@@ -23,6 +26,9 @@ struct RemindianApp: App {
         MenuBarExtra {
             MenuBarView()
                 .environmentObject(syncManager)
+                .onOpenURL { url in
+                    OAuthCallbackHandler.shared.handle(url: url)
+                }
         } label: {
             let symbolName = syncManager.isSyncing
                 ? "arrow.triangle.2.circlepath.circle.fill"

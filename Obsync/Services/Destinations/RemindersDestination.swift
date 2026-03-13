@@ -43,13 +43,13 @@ class RemindersDestination: TaskDestination {
         return allTasks
     }
 
-    func getAvailableLists() -> [String] {
+    func getAvailableLists() async -> [String] {
         return eventStore.calendars(for: .reminder).map { $0.title }
     }
 
     // MARK: - CRUD
 
-    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) throws -> String {
+    func createTask(from task: SyncTask, inList listName: String, config: SyncConfiguration) async throws -> String {
         let list = try getOrCreateList(named: listName)
         let reminder = EKReminder(eventStore: eventStore)
         reminder.calendar = list
@@ -63,7 +63,7 @@ class RemindersDestination: TaskDestination {
         return reminder.calendarItemIdentifier
     }
 
-    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) throws {
+    func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) async throws {
         guard let reminder = eventStore.calendarItem(withIdentifier: id) as? EKReminder else {
             throw RemindersError.reminderNotFound(id)
         }
@@ -76,7 +76,7 @@ class RemindersDestination: TaskDestination {
         try eventStore.save(reminder, commit: true)
     }
 
-    func moveTask(withId id: String, toList listName: String) throws {
+    func moveTask(withId id: String, toList listName: String) async throws {
         guard let reminder = eventStore.calendarItem(withIdentifier: id) as? EKReminder else {
             throw RemindersError.reminderNotFound(id)
         }
@@ -85,7 +85,7 @@ class RemindersDestination: TaskDestination {
         try eventStore.save(reminder, commit: true)
     }
 
-    func deleteTask(withId id: String) throws {
+    func deleteTask(withId id: String) async throws {
         guard let reminder = eventStore.calendarItem(withIdentifier: id) as? EKReminder else {
             throw RemindersError.reminderNotFound(id)
         }

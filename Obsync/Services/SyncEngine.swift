@@ -512,7 +512,7 @@ class SyncEngine {
                             }
 
                             if !config.dryRunMode {
-                                try destination.updateTask(
+                                try await destination.updateTask(
                                     withId: mapping.remindersId,
                                     from: taskForReminders,
                                     config: config
@@ -521,7 +521,7 @@ class SyncEngine {
                                 // Move to correct list if needed
                                 let targetList = config.remindersListForTag(oTask.targetList ?? "")
                                 if targetList != rTask.targetList {
-                                    try destination.moveTask(withId: mapping.remindersId, toList: targetList)
+                                    try await destination.moveTask(withId: mapping.remindersId, toList: targetList)
                                 }
 
                                 syncState.addOrUpdateMapping(
@@ -586,7 +586,7 @@ class SyncEngine {
                         do {
                             let listName = config.remindersListForTag(oTask.targetList ?? "")
                             if !config.dryRunMode {
-                                let newId = try destination.createTask(
+                                let newId = try await destination.createTask(
                                     from: oTask,
                                     inList: listName,
                                     config: config
@@ -693,7 +693,7 @@ class SyncEngine {
                             // Truly deleted from Obsidian — delete from Reminders too
                             do {
                                 if !config.dryRunMode {
-                                    try destination.deleteTask(withId: mapping.remindersId)
+                                    try await destination.deleteTask(withId: mapping.remindersId)
                                     syncState.removeMapping(obsidianId: mapping.obsidianId)
                                 }
                                 result.deleted += 1
@@ -800,7 +800,7 @@ class SyncEngine {
 
                     if !config.dryRunMode {
                         // Update the existing destination task with source data (source of truth)
-                        try? destination.updateTask(
+                        try? await destination.updateTask(
                             withId: matched.id,
                             from: task,
                             config: config
@@ -832,7 +832,7 @@ class SyncEngine {
                     let listName = config.remindersListForTag(task.targetList ?? "")
                     debugLog("[SyncEngine] Creating: \"\(task.title)\" → list \"\(listName)\" (tag: \(task.targetList ?? "none"), client: \(task.clientName ?? "none"))")
                     if !config.dryRunMode {
-                        let reminderId = try destination.createTask(
+                        let reminderId = try await destination.createTask(
                             from: task,
                             inList: listName,
                             config: config
@@ -932,7 +932,7 @@ class SyncEngine {
 
     // MARK: - Conflict Resolution (simplified - Obsidian always wins)
 
-    func resolveConflict(_ conflict: SyncConflict, with resolution: SyncConflict.ConflictResolutionChoice, config: SyncConfiguration) throws {
+    func resolveConflict(_ conflict: SyncConflict, with resolution: SyncConflict.ConflictResolutionChoice, config: SyncConfiguration) async throws {
         guard let remindersId = conflict.remindersVersion.remindersId else {
             throw SyncError.missingSourceInfo
         }
@@ -940,7 +940,7 @@ class SyncEngine {
         let obsidianId = source.generateTaskId(for: conflict.obsidianVersion)
 
         // Always use source version for destination
-        try destination.updateTask(
+        try await destination.updateTask(
             withId: remindersId,
             from: conflict.obsidianVersion,
             config: config

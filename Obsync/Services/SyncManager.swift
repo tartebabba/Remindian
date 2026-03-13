@@ -73,6 +73,7 @@ class SyncManager: ObservableObject {
         setupAutoSync()
         setupConfigObserver()
         setupAppearanceObserver()
+        setupOAuthObserver()
     }
 
     // MARK: - Source/Destination Factory
@@ -109,6 +110,16 @@ class SyncManager: ObservableObject {
             let destination = Things3Destination()
             destination.authToken = config.things3AuthToken
             return destination
+        case .todoist:
+            let destination = TodoistDestination()
+            destination.apiToken = config.todoistApiToken
+            return destination
+        case .tickTick:
+            let destination = TickTickDestination()
+            destination.accessToken = config.tickTickAccessToken
+            destination.refreshToken = config.tickTickRefreshToken
+            destination.tokenExpiry = config.tickTickTokenExpiry
+            return destination
         }
     }
 
@@ -142,6 +153,15 @@ class SyncManager: ObservableObject {
                 self?.setupAutoSync()
                 self?.updateHotKey()
                 self?.updateFileWatcher()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func setupOAuthObserver() {
+        OAuthCallbackHandler.shared.$tickTickAuthCode
+            .compactMap { $0 }
+            .sink { [weak self] code in
+                self?.handleTickTickOAuthCode(code)
             }
             .store(in: &cancellables)
     }
@@ -278,11 +298,13 @@ class SyncManager: ObservableObject {
     // MARK: - Conflict Resolution
 
     func resolveConflict(_ conflict: SyncEngine.SyncConflict, choice: SyncEngine.SyncConflict.ConflictResolutionChoice) {
-        do {
-            try syncEngine.resolveConflict(conflict, with: choice, config: config)
-            pendingConflicts.removeAll { $0.task.id == conflict.task.id }
-        } catch {
-            showErrorMessage("Failed to resolve conflict: \(error.localizedDescription)")
+        Task {
+            do {
+                try await syncEngine.resolveConflict(conflict, with: choice, config: config)
+                pendingConflicts.removeAll { $0.task.id == conflict.task.id }
+            } catch {
+                showErrorMessage("Failed to resolve conflict: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -337,8 +359,10 @@ class SyncManager: ObservableObject {
     // MARK: - List Management
 
     func refreshLists() {
-        availableLists = taskDestination.getAvailableLists()
-        debugLog("[SyncManager] Refreshed lists: \(availableLists)")
+        Task {
+            availableLists = await taskDestination.getAvailableLists()
+            debugLog("[SyncManager] Refreshed lists: \(availableLists)")
+        }
     }
 
     // MARK: - Configuration
@@ -535,6 +559,59 @@ class SyncManager: ObservableObject {
                 debugLog("[SyncManager] Launch at login failed: \(error)")
             }
         }
+    }
+
+    // MARK: - TickTick OAuth
+
+    /// Initiate the TickTick OAuth flow by opening the browser.
+    func connectTickTick() {
+        guard let destination = taskDestination as? TickTickDestination else {
+            // Create a temporary destination to start the flow
+            let tmp = TickTickDestination()
+            tmp.startOAuthFlow()
+            return
+        }
+        destination.startOAuthFlow()
+    }
+
+    /// Exchange a TickTick OAuth authorization code for tokens.
+    func handleTickTickOAuthCode(_ code: String) {
+        Task {
+            do {
+                let destination: TickTickDestination
+                if let existing = taskDestination as? TickTickDestination {
+                    destination = existing
+                } else {
+                    destination = TickTickDestination()
+                }
+                try await destination.exchangeCodeForToken(code)
+
+                // Store tokens in config
+                config.tickTickAccessToken = destination.accessToken
+                config.tickTickRefreshToken = destination.refreshToken
+                config.tickTickTokenExpiry = destination.tokenExpiry
+                config.save()
+
+                // Recreate destination with new tokens
+                updateSourceAndDestination()
+                refreshLists()
+
+                debugLog("[SyncManager] TickTick connected successfully")
+            } catch {
+                showErrorMessage("TickTick connection failed: \(error.localizedDescription)")
+                debugLog("[SyncManager] TickTick OAuth error: \(error)")
+            }
+        }
+    }
+
+    /// Disconnect TickTick by clearing stored tokens.
+    func disconnectTickTick() {
+        config.tickTickAccessToken = ""
+        config.tickTickRefreshToken = ""
+        config.tickTickTokenExpiry = nil
+        config.save()
+        updateSourceAndDestination()
+        debugLog("[SyncManager] TickTick disconnected")
     }
 
     func resetSyncState() {
