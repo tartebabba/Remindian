@@ -146,6 +146,7 @@ class Things3Destination: TaskDestination {
             scriptSource = """
                 tell application id "com.culturedcode.ThingsMac"
                     launch
+                    delay 0.5
                     set newTodo to make new to do with properties {\(properties)}
                     move newTodo to project "\(escapedProject)"
                     return id of newTodo
@@ -155,15 +156,16 @@ class Things3Destination: TaskDestination {
             scriptSource = """
                 tell application id "com.culturedcode.ThingsMac"
                     launch
+                    delay 0.5
                     set newTodo to make new to do with properties {\(properties)}
                     return id of newTodo
                 end tell
             """
         }
 
-        let script = NSAppleScript(source: scriptSource)
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error),
+        // Execute with retry — sandbox AppleScript can race against app initialization
+        let (result, error) = executeAppleScriptWithRetry(source: scriptSource)
+        guard let result = result,
               let taskId = result.stringValue, !taskId.isEmpty else {
             let message = (error?[NSAppleScript.errorMessage] as? String) ?? "Unknown error"
             throw Things3Error.appleScriptError("Failed to create task: \(message)")
@@ -261,16 +263,16 @@ class Things3Destination: TaskDestination {
     func deleteTask(withId id: String) async throws {
         // Things 3 URL scheme doesn't support deletion.
         // Use AppleScript to move to Trash instead.
-        let script = NSAppleScript(source: """
+        let scriptSource = """
             tell application id "com.culturedcode.ThingsMac"
                 launch
+                delay 0.5
                 set theTodo to to do id "\(id)"
                 delete theTodo
             end tell
-        """)
+        """
 
-        var error: NSDictionary?
-        script?.executeAndReturnError(&error)
+        let (_, error) = executeAppleScriptWithRetry(source: scriptSource)
 
         if let error = error {
             let message = error[NSAppleScript.errorMessage] as? String ?? "Unknown error"
@@ -284,6 +286,39 @@ class Things3Destination: TaskDestination {
     }
 
     // MARK: - AppleScript Helpers
+
+    /// Execute an AppleScript with one retry on failure.
+    /// Sandboxed apps can race against target app initialization, so if the first attempt
+    /// fails (e.g., "application not running"), we wait 1.5 seconds and try again.
+    private func executeAppleScriptWithRetry(source: String) -> (NSAppleEventDescriptor?, NSDictionary?) {
+        let script = NSAppleScript(source: source)
+        var error: NSDictionary?
+        let result = script?.executeAndReturnError(&error)
+
+        if let error = error {
+            let message = error[NSAppleScript.errorMessage] as? String ?? ""
+            debugLog("[Things3] AppleScript failed (attempt 1): \(message)")
+
+            // Retry once after a delay
+            Thread.sleep(forTimeInterval: 1.5)
+            debugLog("[Things3] Retrying AppleScript...")
+
+            var retryError: NSDictionary?
+            let retryScript = NSAppleScript(source: source)
+            let retryResult = retryScript?.executeAndReturnError(&retryError)
+
+            if let retryError = retryError {
+                let retryMessage = retryError[NSAppleScript.errorMessage] as? String ?? ""
+                debugLog("[Things3] AppleScript failed (attempt 2): \(retryMessage)")
+                return (nil, retryError)
+            }
+
+            debugLog("[Things3] AppleScript succeeded on retry")
+            return (retryResult, nil)
+        }
+
+        return (result, nil)
+    }
 
     /// Update tags on an existing task via URL scheme.
     private func updateTaskTags(withId id: String, tags: [String]) throws {

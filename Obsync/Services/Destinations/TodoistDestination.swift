@@ -174,14 +174,15 @@ class TodoistDestination: TaskDestination {
 
     @discardableResult
     private func makeRequest(method: String, path: String, body: Data? = nil, retryCount: Int = 0) async throws -> (Data, HTTPURLResponse) {
-        guard !apiToken.isEmpty else {
+        let cleanToken = apiToken.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanToken.isEmpty else {
             throw TodoistError.invalidToken
         }
 
         let url = URL(string: baseURL + path)!
         var request = URLRequest(url: url)
         request.httpMethod = method
-        request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("Bearer \(cleanToken)", forHTTPHeaderField: "Authorization")
         request.timeoutInterval = 30
 
         if let body = body {
@@ -189,26 +190,39 @@ class TodoistDestination: TaskDestination {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
 
+        debugLog("[Todoist] \(method) \(url.absoluteString)")
+
         let (data, response) = try await session.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TodoistError.apiError(0, "Invalid response")
         }
 
+        debugLog("[Todoist] \(method) \(path) → HTTP \(httpResponse.statusCode)")
+
         switch httpResponse.statusCode {
-        case 200...299:
-            return (data, httpResponse)
         case 204:
             return (Data(), httpResponse)
+        case 200...299:
+            return (data, httpResponse)
         case 401, 403:
             throw TodoistError.invalidToken
         case 429:
             if retryCount < 2 {
                 let retryAfter = Double(httpResponse.value(forHTTPHeaderField: "Retry-After") ?? "5") ?? 5
+                debugLog("[Todoist] Rate limited, retrying after \(retryAfter)s")
                 try await Task.sleep(nanoseconds: UInt64(retryAfter * 1_000_000_000))
                 return try await makeRequest(method: method, path: path, body: body, retryCount: retryCount + 1)
             }
             throw TodoistError.rateLimited
+        case 500...599:
+            if retryCount < 1 {
+                debugLog("[Todoist] Server error \(httpResponse.statusCode), retrying in 2s...")
+                try await Task.sleep(nanoseconds: 2_000_000_000)
+                return try await makeRequest(method: method, path: path, body: body, retryCount: retryCount + 1)
+            }
+            let snippet = String(data: data.prefix(200), encoding: .utf8) ?? ""
+            throw TodoistError.serverError(httpResponse.statusCode, snippet)
         default:
             let snippet = String(data: data.prefix(200), encoding: .utf8) ?? ""
             throw TodoistError.apiError(httpResponse.statusCode, snippet)
@@ -313,6 +327,7 @@ enum TodoistError: LocalizedError {
     case invalidToken
     case rateLimited
     case apiError(Int, String)
+    case serverError(Int, String)
     case projectNotFound(String)
 
     var errorDescription: String? {
@@ -323,6 +338,8 @@ enum TodoistError: LocalizedError {
             return "Todoist API rate limit exceeded. Please wait a moment and try again."
         case .apiError(let code, let message):
             return "Todoist API error (HTTP \(code)): \(message)"
+        case .serverError(let code, let message):
+            return "Todoist server error (HTTP \(code)). This is usually temporary — try again in a moment. \(message)"
         case .projectNotFound(let name):
             return "Todoist project not found: \(name)"
         }
