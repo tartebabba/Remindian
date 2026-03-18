@@ -126,14 +126,31 @@ class Things3Destination: TaskDestination {
         let escapedTitle = task.title.replacingOccurrences(of: "\"", with: "\\\"")
         let escapedNotes = (task.notes ?? "").replacingOccurrences(of: "\"", with: "\\\"")
 
-        // Build properties — due date is set separately via URL scheme to avoid
-        // AppleScript locale-dependent date parsing issues (#39 follow-up)
+        // Build properties — due date is set via AppleScript date component construction
+        // to avoid locale-dependent date literal parsing issues
         var properties = "name:\"\(escapedTitle)\""
         if !escapedNotes.isEmpty {
             properties += ", notes:\"\(escapedNotes)\""
         }
         if task.isCompleted {
             properties += ", status:completed"
+        }
+
+        // Build a locale-independent due date setter using AppleScript date components
+        var dueDateScript = ""
+        if let dueDate = task.dueDate {
+            let cal = Calendar.current
+            let y = cal.component(.year, from: dueDate)
+            let m = cal.component(.month, from: dueDate)
+            let d = cal.component(.day, from: dueDate)
+            dueDateScript = """
+                    set dueD to current date
+                    set year of dueD to \(y)
+                    set month of dueD to \(m)
+                    set day of dueD to \(d)
+                    set time of dueD to 0
+                    set due date of newTodo to dueD
+            """
         }
 
         // Build the creation script
@@ -147,6 +164,7 @@ class Things3Destination: TaskDestination {
                     delay 0.5
                     set newTodo to make new to do with properties {\(properties)}
                     move newTodo to project "\(escapedProject)"
+                \(dueDateScript)
                     return id of newTodo
                 end tell
             """
@@ -156,6 +174,7 @@ class Things3Destination: TaskDestination {
                     launch
                     delay 0.5
                     set newTodo to make new to do with properties {\(properties)}
+                \(dueDateScript)
                     return id of newTodo
                 end tell
             """
@@ -169,22 +188,14 @@ class Things3Destination: TaskDestination {
             throw Things3Error.appleScriptError("Failed to create task: \(message)")
         }
 
-        // Set due date + tags via URL scheme (locale-independent, avoids AppleScript date parsing)
-        if !authToken.isEmpty {
-            var updateParams: [String: String] = [
+        // Set tags via URL scheme if auth token is available (AppleScript can't set tags on creation)
+        if !task.tags.isEmpty && !authToken.isEmpty {
+            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+            try updateTaskViaURLScheme(params: [
                 "id": taskId,
-                "auth-token": authToken
-            ]
-            if let dueDate = task.dueDate {
-                updateParams["deadline"] = formatDate(dueDate)
-            }
-            if !task.tags.isEmpty {
-                let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-                updateParams["tags"] = tagNames.joined(separator: ",")
-            }
-            if updateParams.count > 2 { // more than just id + auth-token
-                try updateTaskViaURLScheme(params: updateParams)
-            }
+                "auth-token": authToken,
+                "tags": tagNames.joined(separator: ",")
+            ])
         }
 
         debugLog("[Things3] Created task \"\(task.title)\" with id=\(taskId)")
