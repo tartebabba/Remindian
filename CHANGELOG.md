@@ -9,6 +9,9 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 ### New Features
 - **File-to-list mapping** (#37) — Map specific Obsidian files to specific destination lists. All tasks in a mapped file (e.g., `Projects/Work.md`) sync to the specified list without needing to tag each task individually. Configure in Settings > List Mappings
 
+### Bug Fixes
+- **Fixed Things 3 "application not running" error** — AppleScript blocks now use `tell application id "com.culturedcode.ThingsMac"` (bundle identifier) instead of `tell application "Things3"` (display name), which resolves reliably in sandboxed macOS apps. Write operations (`createTask`, `deleteTask`) also include an explicit `launch` command to ensure Things 3 is active before sending commands. This fixes the issue where dry run worked but actual sync failed with "application not running"
+
 ### Technical Changes
 - New `SyncConfiguration.FileMapping` struct with `filePath` and `remindersList` fields
 - New `resolveTargetList(tag:filePath:)` method encapsulates the full resolution chain: explicit tag mapping > file path mapping > auto-capitalize tag > default list

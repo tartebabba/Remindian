@@ -33,10 +33,10 @@ class Things3Destination: TaskDestination {
             throw Things3Error.notInstalled
         }
 
-        // Test AppleScript access
+        // Test AppleScript access — use bundle ID for reliable resolution in sandbox
         let testScript = NSAppleScript(source: """
-            tell application "Things3"
-                return name of application "Things3"
+            tell application id "com.culturedcode.ThingsMac"
+                return name
             end tell
         """)
         var error: NSDictionary?
@@ -74,7 +74,7 @@ class Things3Destination: TaskDestination {
 
         // Fetch projects and areas via AppleScript
         let script = NSAppleScript(source: """
-            tell application "Things3"
+            tell application id "com.culturedcode.ThingsMac"
                 set projectNames to {}
                 repeat with p in projects
                     set end of projectNames to name of p
@@ -144,7 +144,8 @@ class Things3Destination: TaskDestination {
             // Create in a project
             let escapedProject = cleanList.replacingOccurrences(of: "\"", with: "\\\"")
             scriptSource = """
-                tell application "Things3"
+                tell application id "com.culturedcode.ThingsMac"
+                    launch
                     set newTodo to make new to do with properties {\(properties)}
                     move newTodo to project "\(escapedProject)"
                     return id of newTodo
@@ -152,7 +153,8 @@ class Things3Destination: TaskDestination {
             """
         } else {
             scriptSource = """
-                tell application "Things3"
+                tell application id "com.culturedcode.ThingsMac"
+                    launch
                     set newTodo to make new to do with properties {\(properties)}
                     return id of newTodo
                 end tell
@@ -260,7 +262,8 @@ class Things3Destination: TaskDestination {
         // Things 3 URL scheme doesn't support deletion.
         // Use AppleScript to move to Trash instead.
         let script = NSAppleScript(source: """
-            tell application "Things3"
+            tell application id "com.culturedcode.ThingsMac"
+                launch
                 set theTodo to to do id "\(id)"
                 delete theTodo
             end tell
@@ -305,7 +308,7 @@ class Things3Destination: TaskDestination {
     /// Fetch tasks from a specific Things 3 list via AppleScript.
     private func fetchTasksFromList(_ listName: String) throws -> [SyncTask] {
         let script = NSAppleScript(source: """
-            tell application "Things3"
+            tell application id "com.culturedcode.ThingsMac"
                 set todoList to {}
                 repeat with toDo in to dos of list "\(listName)"
                     set todoId to id of toDo
