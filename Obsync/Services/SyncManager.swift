@@ -460,6 +460,19 @@ class SyncManager: ObservableObject {
         config.listMappings.remove(at: index)
     }
 
+    func addFileMapping(filePath: String, remindersList: String) {
+        let mapping = SyncConfiguration.FileMapping(
+            filePath: filePath,
+            remindersList: remindersList
+        )
+        config.filePathMappings.append(mapping)
+    }
+
+    func removeFileMapping(at index: Int) {
+        guard index < config.filePathMappings.count else { return }
+        config.filePathMappings.remove(at: index)
+    }
+
     func updateDockIconVisibility() {
         if config.hideDockIcon {
             NSApp.setActivationPolicy(.accessory)

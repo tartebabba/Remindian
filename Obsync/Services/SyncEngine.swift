@@ -519,7 +519,7 @@ class SyncEngine {
                                 )
 
                                 // Move to correct list if needed
-                                let targetList = config.remindersListForTag(oTask.targetList ?? "")
+                                let targetList = config.resolveTargetList(tag: oTask.targetList, filePath: oTask.obsidianSource?.filePath)
                                 if targetList != rTask.targetList {
                                     try await destination.moveTask(withId: mapping.remindersId, toList: targetList)
                                 }
@@ -584,7 +584,7 @@ class SyncEngine {
                     if !reconnected {
                         // Truly deleted — recreate from Obsidian
                         do {
-                            let listName = config.remindersListForTag(oTask.targetList ?? "")
+                            let listName = config.resolveTargetList(tag: oTask.targetList, filePath: oTask.obsidianSource?.filePath)
                             if !config.dryRunMode {
                                 let newId = try await destination.createTask(
                                     from: oTask,
@@ -751,7 +751,7 @@ class SyncEngine {
 
                 // Skip tasks whose target list is not in the allowed lists
                 if !config.syncedRemindersLists.isEmpty {
-                    let targetList = config.remindersListForTag(task.targetList ?? "")
+                    let targetList = config.resolveTargetList(tag: task.targetList, filePath: task.obsidianSource?.filePath)
                     let allowedLists = Set(config.syncedRemindersLists.map { $0.lowercased() })
                     if !allowedLists.contains(targetList.lowercased()) {
                         result.details.append(SyncLogDetail(
@@ -766,7 +766,7 @@ class SyncEngine {
 
                 // Skip tasks whose target list is excluded (#21)
                 if !config.excludedRemindersLists.isEmpty {
-                    let targetList = config.remindersListForTag(task.targetList ?? "")
+                    let targetList = config.resolveTargetList(tag: task.targetList, filePath: task.obsidianSource?.filePath)
                     let excludedLists = Set(config.excludedRemindersLists.map { $0.lowercased() })
                     if excludedLists.contains(targetList.lowercased()) {
                         result.details.append(SyncLogDetail(
@@ -784,7 +784,7 @@ class SyncEngine {
                 // sync state reset or ID format migration).
                 if var candidates = unmatchedRemindersByTitle[task.title], !candidates.isEmpty {
                     // Pick the best candidate — prefer one in the same list
-                    let targetList = config.remindersListForTag(task.targetList ?? "")
+                    let targetList = config.resolveTargetList(tag: task.targetList, filePath: task.obsidianSource?.filePath)
                     var bestIndex = 0
                     for (i, candidate) in candidates.enumerated() {
                         if candidate.task.targetList == targetList {
@@ -829,7 +829,7 @@ class SyncEngine {
                 }
 
                 do {
-                    let listName = config.remindersListForTag(task.targetList ?? "")
+                    let listName = config.resolveTargetList(tag: task.targetList, filePath: task.obsidianSource?.filePath)
                     debugLog("[SyncEngine] Creating: \"\(task.title)\" → list \"\(listName)\" (tag: \(task.targetList ?? "none"), client: \(task.clientName ?? "none"))")
                     if !config.dryRunMode {
                         let reminderId = try await destination.createTask(

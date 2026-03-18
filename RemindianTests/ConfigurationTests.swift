@@ -139,4 +139,124 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(SyncConfiguration.TaskDestinationType.appleReminders.displayName, "Apple Reminders")
         XCTAssertEqual(SyncConfiguration.TaskDestinationType.things3.displayName, "Things 3")
     }
+
+    // MARK: - File Path Mapping (#37)
+
+    func testResolveTargetListTagMappingWins() {
+        let config = SyncConfiguration()
+        config.listMappings = [
+            SyncConfiguration.ListMapping(obsidianTag: "work", remindersList: "Work Tasks"),
+        ]
+        config.filePathMappings = [
+            SyncConfiguration.FileMapping(filePath: "Projects/Work.md", remindersList: "Work Projects"),
+        ]
+
+        // Tag mapping should win over file mapping
+        let result = config.resolveTargetList(tag: "work", filePath: "Projects/Work.md")
+        XCTAssertEqual(result, "Work Tasks")
+    }
+
+    func testResolveTargetListFileMapping() {
+        let config = SyncConfiguration()
+        config.filePathMappings = [
+            SyncConfiguration.FileMapping(filePath: "Projects/Work.md", remindersList: "Work Projects"),
+        ]
+        config.defaultList = "Inbox"
+
+        // No tag → file mapping should match
+        let result = config.resolveTargetList(tag: nil, filePath: "Projects/Work.md")
+        XCTAssertEqual(result, "Work Projects")
+    }
+
+    func testResolveTargetListFileMappingNoTag() {
+        let config = SyncConfiguration()
+        config.filePathMappings = [
+            SyncConfiguration.FileMapping(filePath: "Shopping.md", remindersList: "Groceries"),
+        ]
+        config.defaultList = "Inbox"
+
+        // Untagged task in a mapped file
+        let result = config.resolveTargetList(tag: "", filePath: "Shopping.md")
+        XCTAssertEqual(result, "Groceries")
+    }
+
+    func testResolveTargetListFallsBackToDefault() {
+        let config = SyncConfiguration()
+        config.defaultList = "Inbox"
+
+        let result = config.resolveTargetList(tag: nil, filePath: "Random/File.md")
+        XCTAssertEqual(result, "Inbox")
+    }
+
+    func testResolveTargetListAutoCapitalizeTag() {
+        let config = SyncConfiguration()
+        config.defaultList = "Inbox"
+
+        // No explicit mapping, no file mapping → auto-capitalize
+        let result = config.resolveTargetList(tag: "family", filePath: nil)
+        XCTAssertEqual(result, "Family")
+    }
+
+    func testFileMappingEncodeDecode() {
+        let config = SyncConfiguration()
+        config.filePathMappings = [
+            SyncConfiguration.FileMapping(filePath: "Work/Tasks.md", remindersList: "Work"),
+            SyncConfiguration.FileMapping(filePath: "Personal/Todo.md", remindersList: "Personal"),
+        ]
+
+        let encoder = JSONEncoder()
+        guard let data = try? encoder.encode(config) else {
+            XCTFail("Failed to encode config with file mappings")
+            return
+        }
+
+        let decoder = JSONDecoder()
+        guard let decoded = try? decoder.decode(SyncConfiguration.self, from: data) else {
+            XCTFail("Failed to decode config with file mappings")
+            return
+        }
+
+        XCTAssertEqual(decoded.filePathMappings.count, 2)
+        XCTAssertEqual(decoded.filePathMappings[0].filePath, "Work/Tasks.md")
+        XCTAssertEqual(decoded.filePathMappings[0].remindersList, "Work")
+        XCTAssertEqual(decoded.filePathMappings[1].filePath, "Personal/Todo.md")
+        XCTAssertEqual(decoded.filePathMappings[1].remindersList, "Personal")
+    }
+
+    func testFileMappingBackwardCompatibility() {
+        // Config without filePathMappings should decode with empty array
+        let json = """
+        {
+            "vaultPath": "/test",
+            "syncIntervalMinutes": 5,
+            "enableAutoSync": true,
+            "syncOnLaunch": true,
+            "listMappings": [],
+            "defaultList": "Reminders",
+            "taskFilesPattern": "*.md",
+            "excludedFolders": [".obsidian"],
+            "syncCompletedTasks": false,
+            "conflictResolution": "obsidian",
+            "includeDueTime": false,
+            "hideDockIcon": false,
+            "forceDarkIcon": false,
+            "dryRunMode": false,
+            "enableCompletionWriteback": true,
+            "enableDueDateWriteback": false,
+            "enableStartDateWriteback": false,
+            "enablePriorityWriteback": false,
+            "enableNewTaskWriteback": false,
+            "inboxFilePath": "Inbox.md",
+            "enableFileWatcher": false,
+            "enableNotifications": true,
+            "globalHotKeyEnabled": false,
+            "globalHotKeyCode": 1,
+            "globalHotKeyModifiers": 3328
+        }
+        """.data(using: .utf8)!
+
+        let config = try? JSONDecoder().decode(SyncConfiguration.self, from: json)
+        XCTAssertNotNil(config)
+        XCTAssertTrue(config!.filePathMappings.isEmpty)
+    }
 }

@@ -86,6 +86,9 @@ class SyncConfiguration: ObservableObject, Codable {
     // MARK: - TaskNotes List Field (#20)
     @Published var taskNotesListField: String  // Which field determines Reminders list ("tags", "project", "context", or custom)
 
+    // MARK: - File Path Mappings (#37)
+    @Published var filePathMappings: [FileMapping]  // Map specific files to specific destination lists
+
     // MARK: - Global Filter (#36)
     @Published var globalFilter: String  // Text that must appear in the file/section for tasks to be synced (e.g., "#task" for Obsidian Tasks global filter)
 
@@ -131,6 +134,12 @@ class SyncConfiguration: ObservableObject, Codable {
         var remindersList: String
     }
 
+    struct FileMapping: Codable, Identifiable, Equatable {
+        var id = UUID()
+        var filePath: String        // Relative path within vault (e.g., "Projects/Work.md")
+        var remindersList: String
+    }
+
     enum ConflictResolution: String, Codable, CaseIterable {
         case obsidianWins = "obsidian"
 
@@ -154,6 +163,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
         case taskNotesFieldMapping, taskNotesListField
+        case filePathMappings
         case globalFilter
         case todoistApiToken
         case tickTickAccessToken, tickTickRefreshToken, tickTickTokenExpiry
@@ -205,6 +215,7 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesDoneStatus: String = "done",
         taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
         taskNotesListField: String = "tags",
+        filePathMappings: [FileMapping] = [],
         globalFilter: String = "",
         todoistApiToken: String = "",
         tickTickAccessToken: String = "",
@@ -256,6 +267,7 @@ class SyncConfiguration: ObservableObject, Codable {
         self.taskNotesDoneStatus = taskNotesDoneStatus
         self.taskNotesFieldMapping = taskNotesFieldMapping
         self.taskNotesListField = taskNotesListField
+        self.filePathMappings = filePathMappings
         self.globalFilter = globalFilter
         self.todoistApiToken = todoistApiToken
         self.tickTickAccessToken = tickTickAccessToken
@@ -310,6 +322,7 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesDoneStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesDoneStatus) ?? "done"
         taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
         taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
+        filePathMappings = try container.decodeIfPresent([FileMapping].self, forKey: .filePathMappings) ?? []
         globalFilter = try container.decodeIfPresent(String.self, forKey: .globalFilter) ?? ""
         todoistApiToken = try container.decodeIfPresent(String.self, forKey: .todoistApiToken) ?? ""
         tickTickAccessToken = try container.decodeIfPresent(String.self, forKey: .tickTickAccessToken) ?? ""
@@ -364,6 +377,7 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)
         try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
         try container.encode(taskNotesListField, forKey: .taskNotesListField)
+        try container.encode(filePathMappings, forKey: .filePathMappings)
         try container.encode(globalFilter, forKey: .globalFilter)
         try container.encode(todoistApiToken, forKey: .todoistApiToken)
         try container.encode(tickTickAccessToken, forKey: .tickTickAccessToken)
@@ -420,6 +434,48 @@ class SyncConfiguration: ObservableObject, Codable {
 
         // 2. Auto-map: capitalize first letter (e.g., "work" → "Work", "family" → "Family")
         return cleanTag.prefix(1).uppercased() + cleanTag.dropFirst()
+    }
+
+    /// Resolve the destination list for a task, checking all mapping sources in priority order:
+    /// 1. Explicit tag mapping (ListMapping)
+    /// 2. File path mapping (FileMapping, #37)
+    /// 3. Auto-capitalize tag name
+    /// 4. Default list
+    func resolveTargetList(tag: String?, filePath: String?) -> String {
+        let cleanTag = {
+            guard let tag = tag else { return "" }
+            return (tag.hasPrefix("#") || tag.hasPrefix("+")) ? String(tag.dropFirst()) : tag
+        }()
+
+        // 1. Check explicit tag mappings first
+        if !cleanTag.isEmpty {
+            if let mapping = listMappings.first(where: {
+                let mappingTag = ($0.obsidianTag.hasPrefix("#") || $0.obsidianTag.hasPrefix("+"))
+                    ? String($0.obsidianTag.dropFirst())
+                    : $0.obsidianTag
+                return mappingTag.lowercased() == cleanTag.lowercased()
+            }) {
+                return mapping.remindersList
+            }
+        }
+
+        // 2. Check file path mappings (#37)
+        if let filePath = filePath, !filePath.isEmpty {
+            if let mapping = filePathMappings.first(where: {
+                filePath.lowercased() == $0.filePath.lowercased()
+                || filePath.lowercased().hasSuffix("/\($0.filePath.lowercased())")
+            }) {
+                return mapping.remindersList
+            }
+        }
+
+        // 3. Auto-capitalize tag
+        if !cleanTag.isEmpty {
+            return cleanTag.prefix(1).uppercased() + cleanTag.dropFirst()
+        }
+
+        // 4. Default list
+        return defaultList
     }
 
     func obsidianTagForList(_ listName: String) -> String? {

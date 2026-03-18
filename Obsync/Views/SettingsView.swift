@@ -321,13 +321,16 @@ struct ListMappingsView: View {
     @EnvironmentObject var syncManager: SyncManager
     @State private var newTag = ""
     @State private var newList = ""
+    @State private var newFilePath = ""
+    @State private var newFileList = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Map Obsidian tags to Reminders lists")
+            // MARK: - Tag Mappings
+            Text("Tag \u{2192} List Mappings")
                 .font(.headline)
 
-            Text("Tasks with #tag or +tag will sync to the mapped Reminders list")
+            Text("Tasks with #tag or +tag will sync to the mapped list")
                 .font(.caption)
                 .foregroundColor(.secondary)
 
@@ -356,9 +359,7 @@ struct ListMappingsView: View {
                     .padding(.vertical, 4)
                 }
             }
-            .frame(minHeight: 150)
-
-            Divider()
+            .frame(minHeight: 100)
 
             HStack {
                 TextField("Tag (e.g., work or +project)", text: $newTag)
@@ -384,6 +385,77 @@ struct ListMappingsView: View {
                 }
                 .disabled(newTag.isEmpty || newList.isEmpty)
             }
+
+            Divider()
+
+            // MARK: - File Path Mappings (#37)
+            Text("File \u{2192} List Mappings")
+                .font(.headline)
+
+            Text("All tasks in the specified file will sync to the mapped list, regardless of their tags")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            List {
+                ForEach(Array(syncManager.config.filePathMappings.enumerated()), id: \.element.id) { index, mapping in
+                    HStack {
+                        Image(systemName: "doc.text")
+                            .foregroundColor(.secondary)
+
+                        Text(mapping.filePath)
+                            .fontWeight(.medium)
+                            .foregroundColor(.accentColor)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Image(systemName: "arrow.right")
+                            .foregroundColor(.secondary)
+
+                        Text(mapping.remindersList)
+
+                        Spacer()
+
+                        Button(action: {
+                            syncManager.removeFileMapping(at: index)
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .frame(minHeight: 80)
+
+            HStack {
+                TextField("File path (e.g., Projects/Work.md)", text: $newFilePath)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+
+                Image(systemName: "arrow.right")
+                    .foregroundColor(.secondary)
+
+                Picker("List", selection: $newFileList) {
+                    Text("Select list...").tag("")
+                    ForEach(syncManager.availableLists, id: \.self) { list in
+                        Text(list).tag(list)
+                    }
+                }
+                .frame(width: 150)
+
+                Button("Add") {
+                    guard !newFilePath.isEmpty && !newFileList.isEmpty else { return }
+                    syncManager.addFileMapping(filePath: newFilePath, remindersList: newFileList)
+                    newFilePath = ""
+                    newFileList = ""
+                }
+                .disabled(newFilePath.isEmpty || newFileList.isEmpty)
+            }
+
+            Text("Use the relative path from your vault root (e.g., Projects/Work.md)")
+                .font(.caption2)
+                .foregroundColor(.secondary)
         }
         .padding()
         .onAppear {

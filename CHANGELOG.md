@@ -4,6 +4,19 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.1.0-beta (March 2026)
+
+### New Features
+- **File-to-list mapping** (#37) — Map specific Obsidian files to specific destination lists. All tasks in a mapped file (e.g., `Projects/Work.md`) sync to the specified list without needing to tag each task individually. Configure in Settings > List Mappings
+
+### Technical Changes
+- New `SyncConfiguration.FileMapping` struct with `filePath` and `remindersList` fields
+- New `resolveTargetList(tag:filePath:)` method encapsulates the full resolution chain: explicit tag mapping > file path mapping > auto-capitalize tag > default list
+- `SyncEngine` uses `resolveTargetList` at all 6 list routing call sites
+- 7 new tests covering file mapping resolution priority, encode/decode, and backward compatibility (49 total)
+
+---
+
 ## v4.0.0-beta (March 2026)
 
 ### New Features
