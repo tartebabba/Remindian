@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="screenshots/banner.png" alt="Remindian — Stop switching. Start syncing." width="100%">
+  <img src="screenshots/banner.jpeg" alt="Remindian — Stop switching. Start syncing." width="100%">
 </p>
 
 <p align="center">
