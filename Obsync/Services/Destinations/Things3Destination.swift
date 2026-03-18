@@ -126,13 +126,11 @@ class Things3Destination: TaskDestination {
         let escapedTitle = task.title.replacingOccurrences(of: "\"", with: "\\\"")
         let escapedNotes = (task.notes ?? "").replacingOccurrences(of: "\"", with: "\\\"")
 
-        // Build properties
+        // Build properties — due date is set separately via URL scheme to avoid
+        // AppleScript locale-dependent date parsing issues (#39 follow-up)
         var properties = "name:\"\(escapedTitle)\""
         if !escapedNotes.isEmpty {
             properties += ", notes:\"\(escapedNotes)\""
-        }
-        if let dueDate = task.dueDate {
-            properties += ", due date:date \"\(formatAppleScriptDate(dueDate))\""
         }
         if task.isCompleted {
             properties += ", status:completed"
@@ -171,10 +169,22 @@ class Things3Destination: TaskDestination {
             throw Things3Error.appleScriptError("Failed to create task: \(message)")
         }
 
-        // Set tags via URL scheme if auth token is available (AppleScript can't set tags on creation)
-        if !task.tags.isEmpty && !authToken.isEmpty {
-            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
-            try updateTaskTags(withId: taskId, tags: tagNames)
+        // Set due date + tags via URL scheme (locale-independent, avoids AppleScript date parsing)
+        if !authToken.isEmpty {
+            var updateParams: [String: String] = [
+                "id": taskId,
+                "auth-token": authToken
+            ]
+            if let dueDate = task.dueDate {
+                updateParams["deadline"] = formatDate(dueDate)
+            }
+            if !task.tags.isEmpty {
+                let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+                updateParams["tags"] = tagNames.joined(separator: ",")
+            }
+            if updateParams.count > 2 { // more than just id + auth-token
+                try updateTaskViaURLScheme(params: updateParams)
+            }
         }
 
         debugLog("[Things3] Created task \"\(task.title)\" with id=\(taskId)")
@@ -320,16 +330,8 @@ class Things3Destination: TaskDestination {
         return (result, nil)
     }
 
-    /// Update tags on an existing task via URL scheme.
-    private func updateTaskTags(withId id: String, tags: [String]) throws {
-        guard !authToken.isEmpty else { return }
-
-        var params: [String: String] = [
-            "id": id,
-            "auth-token": authToken,
-            "tags": tags.joined(separator: ",")
-        ]
-
+    /// Send an update to Things 3 via URL scheme (locale-independent).
+    private func updateTaskViaURLScheme(params: [String: String]) throws {
         var components = URLComponents()
         components.scheme = "things"
         components.host = ""
@@ -337,7 +339,10 @@ class Things3Destination: TaskDestination {
         components.queryItems = params.map { URLQueryItem(name: $0.key, value: $0.value) }
 
         guard let url = components.url else { return }
-        NSWorkspace.shared.open(url)
+        let success = NSWorkspace.shared.open(url)
+        if !success {
+            debugLog("[Things3] URL scheme update failed for task \(params["id"] ?? "?")")
+        }
     }
 
     /// Fetch tasks from a specific Things 3 list via AppleScript.
