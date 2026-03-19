@@ -1,6 +1,6 @@
 import Foundation
 
-/// Todoist destination using the REST API v2.
+/// Todoist destination using the API v1.
 ///
 /// Architecture:
 /// - AUTH: Personal API token (Bearer token in Authorization header)
@@ -10,14 +10,14 @@ import Foundation
 /// - COMPLETE: POST /tasks/{id}/close
 /// - DELETE: DELETE /tasks/{id}
 ///
-/// REST v2 returns bare JSON arrays (no pagination wrapper).
-/// API docs: https://developer.todoist.com/rest/v2/
+/// API v1 returns paginated responses: { "results": [...], "next_cursor": "..." }
+/// API docs: https://developer.todoist.com/api/v1/
 class TodoistDestination: TaskDestination {
     let destinationName = "Todoist"
 
     var apiToken: String = ""
 
-    private let baseURL = "https://api.todoist.com/rest/v2"
+    private let baseURL = "https://api.todoist.com/api/v1"
     private let session = URLSession.shared
 
     // Cache
@@ -30,27 +30,44 @@ class TodoistDestination: TaskDestination {
         guard !apiToken.isEmpty else {
             throw TodoistError.invalidToken
         }
-        // Verify token by fetching one task
-        let (_, response) = try await makeRequest(method: "GET", path: "/tasks?limit=1")
-        return response.statusCode == 200
+        // Verify token by fetching projects (lighter than tasks)
+        let (data, response) = try await makeRequest(method: "GET", path: "/projects")
+        guard response.statusCode == 200 else { return false }
+        // Verify we can decode the response
+        let _ = try JSONDecoder().decode(TodoistPaginatedResponse<TodoistProject>.self, from: data)
+        return true
     }
 
     // MARK: - Fetching
 
     func fetchAllTasks() async throws -> [SyncTask] {
-        let (data, _) = try await makeRequest(method: "GET", path: "/tasks")
-        let todoistTasks: [TodoistTask]
-        do {
-            todoistTasks = try JSONDecoder().decode([TodoistTask].self, from: data)
-        } catch {
-            let snippet = String(data: data.prefix(300), encoding: .utf8) ?? "<binary>"
-            debugLog("[Todoist] JSON decode error: \(error). Response: \(snippet)")
-            throw error
-        }
+        var allTasks: [TodoistTask] = []
+        var cursor: String? = nil
+
+        // Paginate through all tasks
+        repeat {
+            var path = "/tasks?limit=200"
+            if let cursor = cursor {
+                path += "&cursor=\(cursor)"
+            }
+            let (data, _) = try await makeRequest(method: "GET", path: path)
+            let page: TodoistPaginatedResponse<TodoistTask>
+            do {
+                page = try JSONDecoder().decode(TodoistPaginatedResponse<TodoistTask>.self, from: data)
+            } catch {
+                let snippet = String(data: data.prefix(300), encoding: .utf8) ?? "<binary>"
+                debugLog("[Todoist] JSON decode error: \(error). Response: \(snippet)")
+                throw error
+            }
+            allTasks.append(contentsOf: page.results)
+            cursor = page.nextCursor
+        } while cursor != nil
+
         let projects = try await fetchProjects()
         let projectMap = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0.name) })
 
-        return todoistTasks.map { task in
+        debugLog("[Todoist] Fetched \(allTasks.count) tasks across \(projectMap.count) projects")
+        return allTasks.map { task in
             mapToSyncTask(task, projectMap: projectMap)
         }
     }
@@ -149,10 +166,9 @@ class TodoistDestination: TaskDestination {
             throw TodoistError.projectNotFound(listName)
         }
 
-        // REST v2: move by updating the task's project_id
         let body: [String: Any] = ["project_id": projectId]
         let jsonData = try JSONSerialization.data(withJSONObject: body)
-        try await makeRequest(method: "POST", path: "/tasks/\(id)", body: jsonData)
+        try await makeRequest(method: "POST", path: "/tasks/\(id)/move", body: jsonData)
     }
 
     func deleteTask(withId id: String) async throws {
@@ -173,7 +189,8 @@ class TodoistDestination: TaskDestination {
     private func fetchProjects() async throws -> [TodoistProject] {
         let (data, _) = try await makeRequest(method: "GET", path: "/projects")
         do {
-            return try JSONDecoder().decode([TodoistProject].self, from: data)
+            let page = try JSONDecoder().decode(TodoistPaginatedResponse<TodoistProject>.self, from: data)
+            return page.results
         } catch {
             let snippet = String(data: data.prefix(300), encoding: .utf8) ?? "<binary>"
             debugLog("[Todoist] Projects decode error: \(error). Response: \(snippet)")
@@ -253,7 +270,7 @@ class TodoistDestination: TaskDestination {
 
         return SyncTask(
             title: task.content,
-            isCompleted: task.isCompleted,
+            isCompleted: task.checked,
             priority: priority,
             dueDate: dueDate,
             tags: tags,
@@ -301,6 +318,17 @@ class TodoistDestination: TaskDestination {
 
 // MARK: - API Models
 
+/// Generic paginated response wrapper for API v1
+private struct TodoistPaginatedResponse<T: Codable>: Codable {
+    let results: [T]
+    let nextCursor: String?
+
+    enum CodingKeys: String, CodingKey {
+        case results
+        case nextCursor = "next_cursor"
+    }
+}
+
 private struct TodoistTask: Codable {
     let id: String
     let content: String
@@ -309,12 +337,11 @@ private struct TodoistTask: Codable {
     let labels: [String]
     let due: TodoistDue?
     let projectId: String
-    let isCompleted: Bool
+    let checked: Bool
 
     enum CodingKeys: String, CodingKey {
-        case id, content, description, priority, labels, due
+        case id, content, description, priority, labels, due, checked
         case projectId = "project_id"
-        case isCompleted = "is_completed"
     }
 }
 
@@ -327,10 +354,12 @@ private struct TodoistDue: Codable {
     let date: String
     let datetime: String?
     let string: String?
+    let timezone: String?
+    let lang: String?
     let isRecurring: Bool?
 
     enum CodingKeys: String, CodingKey {
-        case date, datetime, string
+        case date, datetime, string, timezone, lang
         case isRecurring = "is_recurring"
     }
 }
