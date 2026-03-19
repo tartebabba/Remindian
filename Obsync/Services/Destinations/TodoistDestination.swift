@@ -1,6 +1,6 @@
 import Foundation
 
-/// Todoist destination using the REST API v1.
+/// Todoist destination using the REST API v2.
 ///
 /// Architecture:
 /// - AUTH: Personal API token (Bearer token in Authorization header)
@@ -9,15 +9,15 @@ import Foundation
 /// - UPDATE: POST /tasks/{id}
 /// - COMPLETE: POST /tasks/{id}/close
 /// - DELETE: DELETE /tasks/{id}
-/// - MOVE: POST /tasks/{id}/move
 ///
-/// API docs: https://developer.todoist.com/api/v1/
+/// REST v2 returns bare JSON arrays (no pagination wrapper).
+/// API docs: https://developer.todoist.com/rest/v2/
 class TodoistDestination: TaskDestination {
     let destinationName = "Todoist"
 
     var apiToken: String = ""
 
-    private let baseURL = "https://api.todoist.com/api/v1"
+    private let baseURL = "https://api.todoist.com/rest/v2"
     private let session = URLSession.shared
 
     // Cache
@@ -39,7 +39,14 @@ class TodoistDestination: TaskDestination {
 
     func fetchAllTasks() async throws -> [SyncTask] {
         let (data, _) = try await makeRequest(method: "GET", path: "/tasks")
-        let todoistTasks = try JSONDecoder().decode([TodoistTask].self, from: data)
+        let todoistTasks: [TodoistTask]
+        do {
+            todoistTasks = try JSONDecoder().decode([TodoistTask].self, from: data)
+        } catch {
+            let snippet = String(data: data.prefix(300), encoding: .utf8) ?? "<binary>"
+            debugLog("[Todoist] JSON decode error: \(error). Response: \(snippet)")
+            throw error
+        }
         let projects = try await fetchProjects()
         let projectMap = Dictionary(uniqueKeysWithValues: projects.map { ($0.id, $0.name) })
 
@@ -142,9 +149,10 @@ class TodoistDestination: TaskDestination {
             throw TodoistError.projectNotFound(listName)
         }
 
+        // REST v2: move by updating the task's project_id
         let body: [String: Any] = ["project_id": projectId]
         let jsonData = try JSONSerialization.data(withJSONObject: body)
-        try await makeRequest(method: "POST", path: "/tasks/\(id)/move", body: jsonData)
+        try await makeRequest(method: "POST", path: "/tasks/\(id)", body: jsonData)
     }
 
     func deleteTask(withId id: String) async throws {
@@ -164,7 +172,13 @@ class TodoistDestination: TaskDestination {
 
     private func fetchProjects() async throws -> [TodoistProject] {
         let (data, _) = try await makeRequest(method: "GET", path: "/projects")
-        return try JSONDecoder().decode([TodoistProject].self, from: data)
+        do {
+            return try JSONDecoder().decode([TodoistProject].self, from: data)
+        } catch {
+            let snippet = String(data: data.prefix(300), encoding: .utf8) ?? "<binary>"
+            debugLog("[Todoist] Projects decode error: \(error). Response: \(snippet)")
+            throw error
+        }
     }
 
     private func resolveProjectId(for listName: String) async throws -> String? {
