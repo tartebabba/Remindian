@@ -69,7 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Request Reminders access on launch
         Task {
-            await SyncManager.shared.requestRemindersAccess()
+            await SyncManager.shared.requestDestinationAccess()
         }
     }
 

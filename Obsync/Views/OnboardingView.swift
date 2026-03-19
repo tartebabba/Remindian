@@ -218,16 +218,16 @@ struct OnboardingView: View {
                 .font(.system(size: 48))
                 .foregroundColor(.accentColor)
 
-            Text("Reminders Access")
+            Text("\(syncManager.config.taskDestinationType.displayName) Access")
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("Remindian needs permission to read and write your Apple Reminders.")
+            Text("Remindian needs permission to access \(syncManager.config.taskDestinationType.displayName) to sync your tasks.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
                 .padding(.horizontal, 40)
 
-            if syncManager.hasRemindersAccess {
+            if syncManager.hasDestinationAccess {
                 HStack {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
@@ -237,7 +237,7 @@ struct OnboardingView: View {
                 Button(isRequestingAccess ? "Requesting..." : "Grant Access") {
                     isRequestingAccess = true
                     Task {
-                        await syncManager.requestRemindersAccess()
+                        await syncManager.requestDestinationAccess()
                         isRequestingAccess = false
                     }
                 }
@@ -364,9 +364,9 @@ struct OnboardingView: View {
                     .foregroundColor(syncManager.config.vaultPath.isEmpty ? .red : .green)
                     .font(.caption)
 
-                Label(syncManager.hasRemindersAccess ? "Reminders access granted" : "Reminders access needed",
-                      systemImage: syncManager.hasRemindersAccess ? "checkmark.circle.fill" : "xmark.circle")
-                    .foregroundColor(syncManager.hasRemindersAccess ? .green : .red)
+                Label(syncManager.hasDestinationAccess ? "\(syncManager.config.taskDestinationType.displayName) access granted" : "\(syncManager.config.taskDestinationType.displayName) access needed",
+                      systemImage: syncManager.hasDestinationAccess ? "checkmark.circle.fill" : "xmark.circle")
+                    .foregroundColor(syncManager.hasDestinationAccess ? .green : .red)
                     .font(.caption)
 
                 Label("Auto-sync every \(syncManager.config.syncIntervalMinutes) minutes",
@@ -396,7 +396,7 @@ struct OnboardingView: View {
     private var canAdvance: Bool {
         switch currentStep {
         case 2: return !syncManager.config.vaultPath.isEmpty
-        case 3: return syncManager.hasRemindersAccess
+        case 3: return syncManager.hasDestinationAccess
         default: return true
         }
     }
@@ -407,7 +407,7 @@ struct OnboardingView: View {
         syncManager.config.save()
 
         // Trigger first sync if both vault and reminders are configured
-        if !syncManager.config.vaultPath.isEmpty && syncManager.hasRemindersAccess {
+        if !syncManager.config.vaultPath.isEmpty && syncManager.hasDestinationAccess {
             Task {
                 await syncManager.performSync()
             }

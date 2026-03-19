@@ -35,7 +35,7 @@ class SyncManager: ObservableObject {
     @Published var isSyncing = false
     @Published var lastSyncResult: SyncEngine.SyncResult?
     @Published var lastSyncDate: Date?
-    @Published var hasRemindersAccess = false
+    @Published var hasDestinationAccess = false
     @Published var pendingConflicts: [SyncEngine.SyncConflict] = []
     @Published var availableLists: [String] = []
     @Published var statusMessage: String = "Ready"
@@ -129,6 +129,11 @@ class SyncManager: ObservableObject {
         taskDestination = SyncManager.createDestination(for: config.taskDestinationType, config: config)
         syncEngine = SyncEngine(source: taskSource, destination: taskDestination)
         debugLog("[SyncManager] Updated source=\(taskSource.sourceName), destination=\(taskDestination.destinationName)")
+
+        // Re-request access for the new destination
+        Task {
+            await requestDestinationAccess()
+        }
     }
 
     private func setupConfigObserver() {
@@ -177,12 +182,12 @@ class SyncManager: ObservableObject {
 
     // MARK: - Access Request
 
-    func requestRemindersAccess() async {
+    func requestDestinationAccess() async {
         do {
             debugLog("[SyncManager] Requesting \(taskDestination.destinationName) access...")
-            hasRemindersAccess = try await taskDestination.requestAccess()
-            debugLog("[SyncManager] \(taskDestination.destinationName) access: \(hasRemindersAccess)")
-            if hasRemindersAccess {
+            hasDestinationAccess = try await taskDestination.requestAccess()
+            debugLog("[SyncManager] \(taskDestination.destinationName) access: \(hasDestinationAccess)")
+            if hasDestinationAccess {
                 refreshLists()
                 debugLog("[SyncManager] Available lists: \(availableLists)")
 
@@ -201,9 +206,13 @@ class SyncManager: ObservableObject {
                 }
             }
         } catch {
-            hasRemindersAccess = false
-            debugLog("[SyncManager] Reminders access failed: \(error.localizedDescription)")
-            showErrorMessage("Failed to get Reminders access: \(error.localizedDescription)")
+            hasDestinationAccess = false
+            debugLog("[SyncManager] \(taskDestination.destinationName) access failed: \(error.localizedDescription)")
+            // Don't show scary error for token-based destinations that just need configuration
+            let isTokenBased = config.taskDestinationType == .todoist || config.taskDestinationType == .tickTick
+            if !isTokenBased {
+                showErrorMessage("Failed to get \(taskDestination.destinationName) access: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -216,8 +225,8 @@ class SyncManager: ObservableObject {
         }
         // Ensure source/destination reflect latest config before each sync
         updateSourceAndDestination()
-        guard hasRemindersAccess else {
-            showErrorMessage("No access to Reminders. Please grant permission in System Settings.")
+        guard hasDestinationAccess else {
+            showErrorMessage("No access to \(taskDestination.destinationName). Please check your configuration in Settings.")
             return
         }
         guard !config.vaultPath.isEmpty else {

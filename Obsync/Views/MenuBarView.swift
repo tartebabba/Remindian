@@ -49,7 +49,7 @@ struct MenuBarView: View {
                 menuButton("Sync Now", icon: "arrow.triangle.2.circlepath") {
                     Task { await syncManager.performSync() }
                 }
-                .disabled(!syncManager.hasRemindersAccess)
+                .disabled(!syncManager.hasDestinationAccess)
             }
 
             if !syncManager.pendingConflicts.isEmpty {
@@ -160,7 +160,7 @@ struct MenuBarView: View {
     private var statusColor: Color {
         if syncManager.isSyncing {
             return .blue
-        } else if !syncManager.hasRemindersAccess {
+        } else if !syncManager.hasDestinationAccess {
             return .red
         } else if !syncManager.pendingConflicts.isEmpty {
             return .orange
@@ -172,8 +172,8 @@ struct MenuBarView: View {
     private var statusTooltip: String {
         if syncManager.isSyncing {
             return "Blue: Sync in progress"
-        } else if !syncManager.hasRemindersAccess {
-            return "Red: No Reminders access — grant permission in System Settings"
+        } else if !syncManager.hasDestinationAccess {
+            return "Red: No destination access — check configuration in Settings"
         } else if !syncManager.pendingConflicts.isEmpty {
             return "Orange: Unresolved conflicts — open main window to resolve"
         } else {

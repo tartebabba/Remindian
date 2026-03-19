@@ -11,7 +11,7 @@ struct ContentView: View {
 
             Divider()
 
-            if !syncManager.hasRemindersAccess {
+            if !syncManager.hasDestinationAccess {
                 PermissionRequestView()
             } else if syncManager.config.vaultPath.isEmpty {
                 SetupWizardView()
@@ -92,7 +92,7 @@ struct HeaderView: View {
                 }) {
                     Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
                 }
-                .disabled(!syncManager.hasRemindersAccess || syncManager.config.vaultPath.isEmpty)
+                .disabled(!syncManager.hasDestinationAccess || syncManager.config.vaultPath.isEmpty)
             }
         }
         .padding()
@@ -105,37 +105,96 @@ struct HeaderView: View {
 struct PermissionRequestView: View {
     @EnvironmentObject var syncManager: SyncManager
 
+    private var destinationType: SyncConfiguration.TaskDestinationType {
+        syncManager.config.taskDestinationType
+    }
+
     var body: some View {
         VStack(spacing: 20) {
             Spacer()
 
-            Image(systemName: "checklist")
+            Image(systemName: iconName)
                 .font(.system(size: 60))
                 .foregroundColor(.secondary)
 
-            Text("Reminders Access Required")
+            Text(titleText)
                 .font(.title2)
                 .fontWeight(.semibold)
 
-            Text("This app needs access to your Reminders to sync tasks with Obsidian.")
+            Text(descriptionText)
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
                 .frame(maxWidth: 400)
 
-            Button("Grant Access") {
-                Task {
-                    await syncManager.requestRemindersAccess()
+            if needsSettingsButton {
+                Button("Open Settings") {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
                 }
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Grant Access") {
+                    Task {
+                        await syncManager.requestDestinationAccess()
+                    }
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
 
-            Text("You can also grant access in System Settings \u{2192} Privacy & Security \u{2192} Reminders")
+            Text(hintText)
                 .font(.caption)
                 .foregroundColor(.secondary)
 
             Spacer()
         }
         .padding()
+    }
+
+    private var iconName: String {
+        switch destinationType {
+        case .appleReminders: return "checklist"
+        case .things3: return "checklist"
+        case .todoist: return "key.fill"
+        case .tickTick: return "link.circle"
+        }
+    }
+
+    private var titleText: String {
+        switch destinationType {
+        case .appleReminders: return "Reminders Access Required"
+        case .things3: return "Things 3 Access Required"
+        case .todoist: return "Todoist Configuration Needed"
+        case .tickTick: return "TickTick Connection Needed"
+        }
+    }
+
+    private var descriptionText: String {
+        switch destinationType {
+        case .appleReminders:
+            return "This app needs access to your Reminders to sync tasks with Obsidian."
+        case .things3:
+            return "Things 3 needs to be installed and running. Grant automation access when prompted."
+        case .todoist:
+            return "Enter your Todoist API token in Settings > General to start syncing. You can find your token in Todoist > Settings > Integrations > Developer."
+        case .tickTick:
+            return "Click \"Connect TickTick\" in Settings > General to authorize Remindian via OAuth."
+        }
+    }
+
+    private var hintText: String {
+        switch destinationType {
+        case .appleReminders:
+            return "You can also grant access in System Settings \u{2192} Privacy & Security \u{2192} Reminders"
+        case .things3:
+            return "You can manage automation permissions in System Settings \u{2192} Privacy & Security \u{2192} Automation"
+        case .todoist:
+            return "Your token is stored locally and never shared"
+        case .tickTick:
+            return "OAuth tokens are stored locally and refresh automatically"
+        }
+    }
+
+    private var needsSettingsButton: Bool {
+        destinationType == .todoist || destinationType == .tickTick
     }
 }
 
