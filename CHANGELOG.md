@@ -4,6 +4,26 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.2.0-beta (March 2026)
+
+### New Features
+- **Folder-to-list mapping** (#40) — Map entire vault folders to specific destination lists. All tasks in any file within the mapped folder (and subfolders) sync to the specified list. More specific folders take priority over broader ones (e.g., `Projects/Work/` beats `Projects/`). Configure in Settings > List Mappings
+- **Dataview inline field support** (#41) — Parse `[key::value]` and `(key::value)` metadata from task lines. Recognized fields: `due`, `start`, `scheduled`, `completed`, `priority`, `tags`, `project`, `list`. Emoji-based metadata takes precedence; dataview fields fill in any gaps. Enable in Settings > Advanced > "Parse dataview inline fields"
+
+### Bug Fixes
+- **Fixed Todoist sync** (#39) — Todoist REST v2 API is 410 Gone. Switched to API v1 with proper paginated response handling (`{ "results": [...], "next_cursor": "..." }`) and fixed field name mismatch (`checked` instead of `isCompleted`)
+- **Fixed destination switching** — `hasRemindersAccess` was blocking all non-Reminders destinations. Renamed to `hasDestinationAccess` with per-destination permission UI and automatic re-request on destination switch
+
+### Technical Changes
+- New `SyncConfiguration.FolderMapping` struct with `folderPath` and `remindersList` fields
+- `resolveTargetList()` now checks folder mappings between file mappings and auto-capitalize (most specific folder wins)
+- New `SyncTask.parseDataviewFields(from:into:)` static method parses both bracket and parenthetical syntax
+- `ObsidianTasksSource.scanTasks()` applies dataview parsing when `enableDataviewFormat` is enabled
+- Mapping priority: explicit tag > file path > folder path > auto-capitalize tag > default list
+- 15 new tests (64 total): folder mapping resolution, specificity, encoding, dataview field parsing, priority preservation
+
+---
+
 ## v4.1.0-beta (March 2026)
 
 ### New Features

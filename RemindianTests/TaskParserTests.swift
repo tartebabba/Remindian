@@ -190,4 +190,84 @@ final class TaskParserTests: XCTestCase {
         XCTAssertTrue(task?.tags.contains("#work") ?? false)
         XCTAssertFalse(task!.title.contains("every week"))
     }
+
+    // MARK: - Dataview Inline Fields (#41)
+
+    func testDataviewDueDate() {
+        let line = "- [ ] Buy milk [due::2025-06-15]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        XCTAssertNil(task.dueDate) // Emoji parser won't find it
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertNotNil(task.dueDate)
+        XCTAssertEqual(task.title, "Buy milk")
+    }
+
+    func testDataviewPriority() {
+        let line = "- [ ] Important task [priority::high]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertEqual(task.priority, .high)
+        XCTAssertEqual(task.title, "Important task")
+    }
+
+    func testDataviewProject() {
+        let line = "- [ ] Fix login bug [project::Backend]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertEqual(task.targetList, "Backend")
+        XCTAssertEqual(task.title, "Fix login bug")
+    }
+
+    func testDataviewProjectWikilink() {
+        let line = "- [ ] Review PR [project::[[Code Review]]]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertEqual(task.targetList, "Code Review")
+    }
+
+    func testDataviewMultipleFields() {
+        let line = "- [ ] Complete report [due::2025-12-01] [priority::medium] [project::Work]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertNotNil(task.dueDate)
+        XCTAssertEqual(task.priority, .medium)
+        XCTAssertEqual(task.targetList, "Work")
+        XCTAssertEqual(task.title, "Complete report")
+    }
+
+    func testDataviewTags() {
+        let line = "- [ ] Setup CI [tags::devops, infrastructure]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertTrue(task.tags.contains("#devops"))
+        XCTAssertTrue(task.tags.contains("#infrastructure"))
+    }
+
+    func testDataviewParenthesisSyntax() {
+        let line = "- [ ] Read book (due::2025-08-01) (priority::low)"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertNotNil(task.dueDate)
+        XCTAssertEqual(task.priority, .low)
+        XCTAssertEqual(task.title, "Read book")
+    }
+
+    func testDataviewDoesNotOverrideEmoji() {
+        // Emoji metadata takes precedence — dataview fills gaps only
+        let line = "- [ ] Task ⏫ 📅 2025-01-01 [due::2025-12-31] [priority::low]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        let originalDue = task.dueDate
+        let originalPriority = task.priority
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        // Emoji values should be preserved
+        XCTAssertEqual(task.dueDate, originalDue)
+        XCTAssertEqual(task.priority, originalPriority)
+    }
+
+    func testDataviewStartDate() {
+        let line = "- [ ] Plan trip [start::2025-03-01] [scheduled::2025-03-15]"
+        var task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)!
+        SyncTask.parseDataviewFields(from: line, into: &task)
+        XCTAssertNotNil(task.startDate)
+    }
 }

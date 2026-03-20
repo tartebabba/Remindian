@@ -258,5 +258,105 @@ final class ConfigurationTests: XCTestCase {
         let config = try? JSONDecoder().decode(SyncConfiguration.self, from: json)
         XCTAssertNotNil(config)
         XCTAssertTrue(config!.filePathMappings.isEmpty)
+        XCTAssertTrue(config!.folderPathMappings.isEmpty)
+        XCTAssertFalse(config!.enableDataviewFormat)
+    }
+
+    // MARK: - Folder Path Mapping (#40)
+
+    func testResolveTargetListFolderMapping() {
+        let config = SyncConfiguration()
+        config.folderPathMappings = [
+            SyncConfiguration.FolderMapping(folderPath: "Projects/Work", remindersList: "Work Tasks"),
+        ]
+        config.defaultList = "Inbox"
+
+        // File inside mapped folder
+        let result = config.resolveTargetList(tag: nil, filePath: "Projects/Work/task-list.md")
+        XCTAssertEqual(result, "Work Tasks")
+    }
+
+    func testResolveTargetListFolderMappingNested() {
+        let config = SyncConfiguration()
+        config.folderPathMappings = [
+            SyncConfiguration.FolderMapping(folderPath: "Projects/Work", remindersList: "Work Tasks"),
+        ]
+        config.defaultList = "Inbox"
+
+        // Deeply nested file inside mapped folder
+        let result = config.resolveTargetList(tag: nil, filePath: "Projects/Work/Clients/Acme/tasks.md")
+        XCTAssertEqual(result, "Work Tasks")
+    }
+
+    func testResolveTargetListFolderMappingSpecificWins() {
+        let config = SyncConfiguration()
+        config.folderPathMappings = [
+            SyncConfiguration.FolderMapping(folderPath: "Projects", remindersList: "All Projects"),
+            SyncConfiguration.FolderMapping(folderPath: "Projects/Work", remindersList: "Work Tasks"),
+        ]
+        config.defaultList = "Inbox"
+
+        // More specific folder mapping should win
+        let result = config.resolveTargetList(tag: nil, filePath: "Projects/Work/task.md")
+        XCTAssertEqual(result, "Work Tasks")
+
+        // Broader mapping for non-matching subfolder
+        let result2 = config.resolveTargetList(tag: nil, filePath: "Projects/Personal/task.md")
+        XCTAssertEqual(result2, "All Projects")
+    }
+
+    func testResolveTargetListFileMappingBeatsFolder() {
+        let config = SyncConfiguration()
+        config.filePathMappings = [
+            SyncConfiguration.FileMapping(filePath: "Projects/Work/special.md", remindersList: "Special"),
+        ]
+        config.folderPathMappings = [
+            SyncConfiguration.FolderMapping(folderPath: "Projects/Work", remindersList: "Work Tasks"),
+        ]
+        config.defaultList = "Inbox"
+
+        // File mapping should beat folder mapping
+        let result = config.resolveTargetList(tag: nil, filePath: "Projects/Work/special.md")
+        XCTAssertEqual(result, "Special")
+
+        // Non-matching file still falls through to folder mapping
+        let result2 = config.resolveTargetList(tag: nil, filePath: "Projects/Work/other.md")
+        XCTAssertEqual(result2, "Work Tasks")
+    }
+
+    func testFolderMappingEncodeDecode() {
+        let config = SyncConfiguration()
+        config.folderPathMappings = [
+            SyncConfiguration.FolderMapping(folderPath: "Work", remindersList: "Work"),
+            SyncConfiguration.FolderMapping(folderPath: "Personal/Family", remindersList: "Family"),
+        ]
+
+        guard let data = try? JSONEncoder().encode(config) else {
+            XCTFail("Failed to encode config with folder mappings")
+            return
+        }
+
+        guard let decoded = try? JSONDecoder().decode(SyncConfiguration.self, from: data) else {
+            XCTFail("Failed to decode config with folder mappings")
+            return
+        }
+
+        XCTAssertEqual(decoded.folderPathMappings.count, 2)
+        XCTAssertEqual(decoded.folderPathMappings[0].folderPath, "Work")
+        XCTAssertEqual(decoded.folderPathMappings[0].remindersList, "Work")
+        XCTAssertEqual(decoded.folderPathMappings[1].folderPath, "Personal/Family")
+        XCTAssertEqual(decoded.folderPathMappings[1].remindersList, "Family")
+    }
+
+    func testResolveTargetListFolderMappingNoMatch() {
+        let config = SyncConfiguration()
+        config.folderPathMappings = [
+            SyncConfiguration.FolderMapping(folderPath: "Projects/Work", remindersList: "Work Tasks"),
+        ]
+        config.defaultList = "Inbox"
+
+        // File NOT inside mapped folder
+        let result = config.resolveTargetList(tag: nil, filePath: "Notes/random.md")
+        XCTAssertEqual(result, "Inbox")
     }
 }

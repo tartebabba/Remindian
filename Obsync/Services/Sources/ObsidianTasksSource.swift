@@ -26,6 +26,25 @@ class ObsidianTasksSource: TaskSource {
             debugLog("[ObsidianTasks] Global filter \"\(filter)\": \(before) → \(tasks.count) tasks")
         }
 
+        // Parse dataview inline fields (#41) — augment tasks with [key::value] metadata
+        if config.enableDataviewFormat {
+            var augmented = 0
+            tasks = tasks.map { task in
+                var mutableTask = task
+                if let originalLine = task.obsidianSource?.originalLine {
+                    let beforeTitle = mutableTask.title
+                    SyncTask.parseDataviewFields(from: originalLine, into: &mutableTask)
+                    if mutableTask.title != beforeTitle || mutableTask.dueDate != task.dueDate || mutableTask.priority != task.priority {
+                        augmented += 1
+                    }
+                }
+                return mutableTask
+            }
+            if augmented > 0 {
+                debugLog("[ObsidianTasks] Dataview fields: augmented \(augmented) tasks with inline field metadata")
+            }
+        }
+
         return tasks
     }
 

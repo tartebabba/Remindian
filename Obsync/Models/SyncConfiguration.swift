@@ -89,6 +89,12 @@ class SyncConfiguration: ObservableObject, Codable {
     // MARK: - File Path Mappings (#37)
     @Published var filePathMappings: [FileMapping]  // Map specific files to specific destination lists
 
+    // MARK: - Folder Path Mappings (#40)
+    @Published var folderPathMappings: [FolderMapping]  // Map entire folders to specific destination lists
+
+    // MARK: - Dataview Inline Fields (#41)
+    @Published var enableDataviewFormat: Bool  // Also parse [key::value] inline fields from tasks
+
     // MARK: - Global Filter (#36)
     @Published var globalFilter: String  // Text that must appear in the file/section for tasks to be synced (e.g., "#task" for Obsidian Tasks global filter)
 
@@ -140,6 +146,12 @@ class SyncConfiguration: ObservableObject, Codable {
         var remindersList: String
     }
 
+    struct FolderMapping: Codable, Identifiable, Equatable {
+        var id = UUID()
+        var folderPath: String      // Relative folder path within vault (e.g., "Projects/Work")
+        var remindersList: String
+    }
+
     enum ConflictResolution: String, Codable, CaseIterable {
         case obsidianWins = "obsidian"
 
@@ -164,6 +176,8 @@ class SyncConfiguration: ObservableObject, Codable {
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
         case taskNotesFieldMapping, taskNotesListField
         case filePathMappings
+        case folderPathMappings
+        case enableDataviewFormat
         case globalFilter
         case todoistApiToken
         case tickTickAccessToken, tickTickRefreshToken, tickTickTokenExpiry
@@ -216,6 +230,8 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
         taskNotesListField: String = "tags",
         filePathMappings: [FileMapping] = [],
+        folderPathMappings: [FolderMapping] = [],
+        enableDataviewFormat: Bool = false,
         globalFilter: String = "",
         todoistApiToken: String = "",
         tickTickAccessToken: String = "",
@@ -268,6 +284,8 @@ class SyncConfiguration: ObservableObject, Codable {
         self.taskNotesFieldMapping = taskNotesFieldMapping
         self.taskNotesListField = taskNotesListField
         self.filePathMappings = filePathMappings
+        self.folderPathMappings = folderPathMappings
+        self.enableDataviewFormat = enableDataviewFormat
         self.globalFilter = globalFilter
         self.todoistApiToken = todoistApiToken
         self.tickTickAccessToken = tickTickAccessToken
@@ -323,6 +341,8 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
         taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
         filePathMappings = try container.decodeIfPresent([FileMapping].self, forKey: .filePathMappings) ?? []
+        folderPathMappings = try container.decodeIfPresent([FolderMapping].self, forKey: .folderPathMappings) ?? []
+        enableDataviewFormat = try container.decodeIfPresent(Bool.self, forKey: .enableDataviewFormat) ?? false
         globalFilter = try container.decodeIfPresent(String.self, forKey: .globalFilter) ?? ""
         todoistApiToken = try container.decodeIfPresent(String.self, forKey: .todoistApiToken) ?? ""
         tickTickAccessToken = try container.decodeIfPresent(String.self, forKey: .tickTickAccessToken) ?? ""
@@ -378,6 +398,8 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
         try container.encode(taskNotesListField, forKey: .taskNotesListField)
         try container.encode(filePathMappings, forKey: .filePathMappings)
+        try container.encode(folderPathMappings, forKey: .folderPathMappings)
+        try container.encode(enableDataviewFormat, forKey: .enableDataviewFormat)
         try container.encode(globalFilter, forKey: .globalFilter)
         try container.encode(todoistApiToken, forKey: .todoistApiToken)
         try container.encode(tickTickAccessToken, forKey: .tickTickAccessToken)
@@ -466,6 +488,20 @@ class SyncConfiguration: ObservableObject, Codable {
                 || filePath.lowercased().hasSuffix("/\($0.filePath.lowercased())")
             }) {
                 return mapping.remindersList
+            }
+        }
+
+        // 2b. Check folder path mappings (#40) — most specific folder wins
+        if let filePath = filePath, !filePath.isEmpty {
+            let normalizedPath = filePath.lowercased()
+            // Sort by path length descending so more specific folders match first
+            let sortedMappings = folderPathMappings.sorted { $0.folderPath.count > $1.folderPath.count }
+            for mapping in sortedMappings {
+                var folderPrefix = mapping.folderPath.lowercased()
+                if !folderPrefix.hasSuffix("/") { folderPrefix += "/" }
+                if normalizedPath.hasPrefix(folderPrefix) || normalizedPath.hasPrefix("/\(folderPrefix)") {
+                    return mapping.remindersList
+                }
             }
         }
 

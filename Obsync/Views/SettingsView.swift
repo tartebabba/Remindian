@@ -323,6 +323,8 @@ struct ListMappingsView: View {
     @State private var newList = ""
     @State private var newFilePath = ""
     @State private var newFileList = ""
+    @State private var newFolderPath = ""
+    @State private var newFolderList = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -456,6 +458,97 @@ struct ListMappingsView: View {
             Text("Use the relative path from your vault root (e.g., Projects/Work.md)")
                 .font(.caption2)
                 .foregroundColor(.secondary)
+
+            Divider()
+
+            // MARK: - Folder Path Mappings (#40)
+            Text("Folder \u{2192} List Mappings")
+                .font(.headline)
+
+            Text("All tasks in any file within the specified folder (and subfolders) will sync to the mapped list")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            List {
+                ForEach(Array(syncManager.config.folderPathMappings.enumerated()), id: \.element.id) { index, mapping in
+                    HStack {
+                        Image(systemName: "folder.fill")
+                            .foregroundColor(.secondary)
+
+                        Text(mapping.folderPath)
+                            .fontWeight(.medium)
+                            .foregroundColor(.accentColor)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+
+                        Image(systemName: "arrow.right")
+                            .foregroundColor(.secondary)
+
+                        Text(mapping.remindersList)
+
+                        Spacer()
+
+                        Button(action: {
+                            syncManager.removeFolderMapping(at: index)
+                        }) {
+                            Image(systemName: "trash")
+                                .foregroundColor(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+            .frame(minHeight: 80)
+
+            HStack {
+                TextField("Folder path (e.g., Projects/Work)", text: $newFolderPath)
+                    .textFieldStyle(.roundedBorder)
+                    .frame(width: 200)
+
+                Image(systemName: "arrow.right")
+                    .foregroundColor(.secondary)
+
+                Picker("List", selection: $newFolderList) {
+                    Text("Select list...").tag("")
+                    ForEach(syncManager.availableLists, id: \.self) { list in
+                        Text(list).tag(list)
+                    }
+                }
+                .frame(width: 150)
+
+                Button("Add") {
+                    guard !newFolderPath.isEmpty && !newFolderList.isEmpty else { return }
+                    syncManager.addFolderMapping(folderPath: newFolderPath, remindersList: newFolderList)
+                    newFolderPath = ""
+                    newFolderList = ""
+                }
+                .disabled(newFolderPath.isEmpty || newFolderList.isEmpty)
+            }
+
+            Text("Use the relative folder path from your vault root. More specific folders take priority over broader ones.")
+                .font(.caption2)
+                .foregroundColor(.secondary)
+
+            // Mapping priority explanation
+            GroupBox {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Mapping Priority (highest to lowest):")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                    Text("1. Explicit tag mapping (#tag \u{2192} List)")
+                        .font(.caption2)
+                    Text("2. File path mapping (file.md \u{2192} List)")
+                        .font(.caption2)
+                    Text("3. Folder path mapping (folder/ \u{2192} List)")
+                        .font(.caption2)
+                    Text("4. Auto-capitalize tag name")
+                        .font(.caption2)
+                    Text("5. Default list")
+                        .font(.caption2)
+                }
+                .foregroundColor(.secondary)
+            }
         }
         .padding()
         .onAppear {
@@ -724,6 +817,25 @@ struct AdvancedSettingsView: View {
                     Text("Only sync tasks whose line contains this text. Matches the Obsidian Tasks plugin global filter setting. Leave empty to sync all tasks.")
                         .font(.caption)
                         .foregroundColor(.secondary)
+
+                    Toggle("Parse dataview inline fields", isOn: $syncManager.config.enableDataviewFormat)
+                        .help("Also read [key::value] and (key::value) metadata from task lines")
+
+                    if syncManager.config.enableDataviewFormat {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("Recognized fields: due, start, scheduled, completed, priority, tags, project, list")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text("Example: - [ ] Buy milk [due::2025-01-15] [priority::high] [project::Shopping]")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                                .italic()
+                            Text("Emoji-based metadata takes precedence. Dataview fields fill in any gaps.")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(.leading, 20)
+                    }
                 }
             } header: {
                 Text("Sync Options")

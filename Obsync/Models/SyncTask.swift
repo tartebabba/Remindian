@@ -260,6 +260,100 @@ extension SyncTask {
         )
     }
     
+    /// Parse dataview inline fields from a task line and merge into existing SyncTask.
+    /// Format: `- [x] Task title [due::2024-01-15] [priority::high] [project::Shopping] [tags::work, urgent]`
+    /// Also supports parenthetical syntax: `(due::2024-01-15)`
+    /// This is called after `fromObsidianLine` to augment with any dataview fields found.
+    static func parseDataviewFields(from line: String, into task: inout SyncTask) {
+        // Match both [key::value] and (key::value) patterns
+        let dvPattern = "[\\[\\(]([\\w-]+)::\\s*([^\\]\\)]+)[\\]\\)]"
+        guard let regex = try? NSRegularExpression(pattern: dvPattern, options: []) else { return }
+
+        let nsRange = NSRange(line.startIndex..., in: line)
+        let matches = regex.matches(in: line, options: [], range: nsRange)
+
+        let dateFormatter = DateFormatter()
+        dateFormatter.dateFormat = "yyyy-MM-dd"
+
+        for match in matches {
+            guard match.numberOfRanges >= 3,
+                  let keyRange = Range(match.range(at: 1), in: line),
+                  let valueRange = Range(match.range(at: 2), in: line) else { continue }
+
+            let key = String(line[keyRange]).lowercased().trimmingCharacters(in: .whitespaces)
+            let value = String(line[valueRange]).trimmingCharacters(in: .whitespaces)
+
+            switch key {
+            case "due", "due_date", "duedate":
+                if task.dueDate == nil, let date = dateFormatter.date(from: value) {
+                    task.dueDate = date
+                }
+            case "start", "start_date", "startdate", "scheduled":
+                if task.startDate == nil, let date = dateFormatter.date(from: value) {
+                    task.startDate = date
+                }
+            case "scheduled_date", "scheduleddate":
+                if task.scheduledDate == nil, let date = dateFormatter.date(from: value) {
+                    task.scheduledDate = date
+                }
+            case "completed", "completion", "completed_date", "done":
+                if task.completedDate == nil, let date = dateFormatter.date(from: value) {
+                    task.completedDate = date
+                }
+            case "priority":
+                if task.priority == .none {
+                    switch value.lowercased() {
+                    case "high", "highest", "1", "critical":
+                        task.priority = .high
+                    case "medium", "2", "normal":
+                        task.priority = .medium
+                    case "low", "lowest", "3":
+                        task.priority = .low
+                    default:
+                        break
+                    }
+                }
+            case "tags", "tag":
+                // Parse comma-separated tags: "work, urgent" or "work"
+                let dvTags = value.split(separator: ",").map { tag -> String in
+                    let cleaned = tag.trimmingCharacters(in: .whitespaces)
+                    return cleaned.hasPrefix("#") ? cleaned : "#\(cleaned)"
+                }
+                for dvTag in dvTags {
+                    if !task.tags.contains(dvTag) {
+                        task.tags.append(dvTag)
+                    }
+                }
+                // Use first new tag as target list if not already set
+                if task.targetList == nil, let firstTag = dvTags.first {
+                    let tagContent = String(firstTag.dropFirst())
+                    task.targetList = tagContent.contains("/")
+                        ? String(tagContent.split(separator: "/").first ?? Substring(tagContent))
+                        : tagContent
+                }
+            case "project", "list":
+                // Directly set target list from project/list field
+                if task.targetList == nil {
+                    // Strip wikilink syntax [[Project Name]] → Project Name
+                    let cleanValue = value
+                        .replacingOccurrences(of: "[[", with: "")
+                        .replacingOccurrences(of: "]]", with: "")
+                    task.targetList = cleanValue
+                }
+            default:
+                break
+            }
+        }
+
+        // Clean dataview fields from the title
+        let cleanPattern = "\\s*[\\[\\(][\\w-]+::\\s*[^\\]\\)]+[\\]\\)]"
+        if let cleanRegex = try? NSRegularExpression(pattern: cleanPattern, options: []) {
+            let titleRange = NSRange(task.title.startIndex..., in: task.title)
+            task.title = cleanRegex.stringByReplacingMatches(in: task.title, range: titleRange, withTemplate: "")
+                .trimmingCharacters(in: .whitespaces)
+        }
+    }
+
     /// Convert task back to Obsidian Tasks format
     func toObsidianLine() -> String {
         var parts: [String] = []
