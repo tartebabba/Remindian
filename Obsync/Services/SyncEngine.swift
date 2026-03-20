@@ -358,7 +358,14 @@ class SyncEngine {
                         debugLog("[SyncEngine] Reminders changed for \"\(oTask.title)\": rChanged=\(rChanged), oChanged=\(oChanged)")
                     }
 
-                    if oChanged || completionDiffers || rChanged {
+                    // Backfill obsidian:// URL if the setting is on but the reminder doesn't have one yet.
+                    // This handles the case where addTaskLinkToReminders was enabled after tasks were already synced.
+                    let needsURLBackfill = config.addTaskLinkToReminders
+                        && oTask.obsidianSource != nil
+                        && !config.vaultPath.isEmpty
+                        && (rTask.url == nil || rTask.url?.scheme != "obsidian")
+
+                    if oChanged || completionDiffers || rChanged || needsURLBackfill {
                         do {
                             var taskForReminders = oTask
 

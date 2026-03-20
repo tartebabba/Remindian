@@ -20,6 +20,7 @@ struct SyncTask: Identifiable, Equatable, Codable {
     var obsidianSource: ObsidianSource?
     var remindersId: String?
     var lastModified: Date
+    var url: URL?  // The URL field (e.g., obsidian:// link)
     
     enum Priority: Int, Codable, CaseIterable {
         case none = 0
@@ -88,7 +89,8 @@ struct SyncTask: Identifiable, Equatable, Codable {
         clientName: String? = nil,
         obsidianSource: ObsidianSource? = nil,
         remindersId: String? = nil,
-        lastModified: Date = Date()
+        lastModified: Date = Date(),
+        url: URL? = nil
     ) {
         self.id = id
         self.title = title
@@ -105,6 +107,7 @@ struct SyncTask: Identifiable, Equatable, Codable {
         self.obsidianSource = obsidianSource
         self.remindersId = remindersId
         self.lastModified = lastModified
+        self.url = url
     }
 }
 
@@ -477,7 +480,8 @@ extension SyncTask {
             targetList: listName,
             notes: reminder.notes,
             remindersId: reminder.calendarItemIdentifier,
-            lastModified: reminder.lastModifiedDate ?? Date()
+            lastModified: reminder.lastModifiedDate ?? Date(),
+            url: reminder.url
         )
     }
     
