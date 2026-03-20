@@ -21,6 +21,33 @@ class Things3Destination: TaskDestination {
     /// The auth token from Things > Settings > General > Enable Things URLs > Manage
     var authToken: String = ""
 
+    /// Expand hierarchical tags so parent tags are included.
+    /// Things 3 requires parent tags to exist before child tags can be nested.
+    /// e.g. "person/name" → ["person", "person/name"]
+    private func expandHierarchicalTags(_ tags: [String]) -> [String] {
+        var expanded: [String] = []
+        var seen = Set<String>()
+        for tag in tags {
+            let stripped = tag.hasPrefix("#") ? String(tag.dropFirst()) : tag
+            if stripped.contains("/") {
+                // Add all ancestor tags first
+                let parts = stripped.split(separator: "/")
+                var path = ""
+                for part in parts {
+                    path = path.isEmpty ? String(part) : "\(path)/\(part)"
+                    if seen.insert(path).inserted {
+                        expanded.append(path)
+                    }
+                }
+            } else {
+                if seen.insert(stripped).inserted {
+                    expanded.append(stripped)
+                }
+            }
+        }
+        return expanded
+    }
+
     // Cache for performance
     private var cachedLists: [String] = []
     private var lastListRefresh: Date?
@@ -168,8 +195,6 @@ class Things3Destination: TaskDestination {
             let escapedProject = cleanList.replacingOccurrences(of: "\"", with: "\\\"")
             scriptSource = """
                 tell application id "com.culturedcode.ThingsMac"
-                    launch
-                    delay 0.5
                     set newTodo to make new to do with properties {\(properties)}
                     move newTodo to project "\(escapedProject)"
                 \(dueDateScript)
@@ -179,8 +204,6 @@ class Things3Destination: TaskDestination {
         } else {
             scriptSource = """
                 tell application id "com.culturedcode.ThingsMac"
-                    launch
-                    delay 0.5
                     set newTodo to make new to do with properties {\(properties)}
                 \(dueDateScript)
                     return id of newTodo
@@ -198,7 +221,7 @@ class Things3Destination: TaskDestination {
 
         // Set tags via URL scheme if auth token is available (AppleScript can't set tags on creation)
         if !task.tags.isEmpty && !authToken.isEmpty {
-            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+            let tagNames = expandHierarchicalTags(task.tags)
             try updateTaskViaURLScheme(params: [
                 "id": taskId,
                 "auth-token": authToken,
@@ -212,7 +235,10 @@ class Things3Destination: TaskDestination {
 
     func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) async throws {
         guard !authToken.isEmpty else {
-            throw Things3Error.authTokenRequired
+            // Don't throw — allow sync to continue for creation-only workflows.
+            // Updates require the auth token, but new tasks are created via AppleScript.
+            debugLog("[Things3] Skipping update for \"\(task.title)\" — no auth token configured. Go to Things > Settings > General > Enable Things URLs to get your token.")
+            return
         }
 
         var params: [String: String] = [
@@ -237,8 +263,9 @@ class Things3Destination: TaskDestination {
         }
 
         // Sync tags (#32 — tag changes were not being sent to Things 3)
+        // Expand hierarchical tags so parent tags are created first (#45)
         if !task.tags.isEmpty {
-            let tagNames = task.tags.map { $0.hasPrefix("#") ? String($0.dropFirst()) : $0 }
+            let tagNames = expandHierarchicalTags(task.tags)
             params["tags"] = tagNames.joined(separator: ",")
         }
 
@@ -260,7 +287,8 @@ class Things3Destination: TaskDestination {
 
     func moveTask(withId id: String, toList listName: String) async throws {
         guard !authToken.isEmpty else {
-            throw Things3Error.authTokenRequired
+            debugLog("[Things3] Skipping move — no auth token configured")
+            return
         }
 
         let cleanList = listName
@@ -294,8 +322,6 @@ class Things3Destination: TaskDestination {
         // Use AppleScript to move to Trash instead.
         let scriptSource = """
             tell application id "com.culturedcode.ThingsMac"
-                launch
-                delay 0.5
                 set theTodo to to do id "\(id)"
                 delete theTodo
             end tell
@@ -317,8 +343,8 @@ class Things3Destination: TaskDestination {
     // MARK: - AppleScript Helpers
 
     /// Execute an AppleScript with one retry on failure.
-    /// Sandboxed apps can race against target app initialization, so if the first attempt
-    /// fails (e.g., "application not running"), we wait 1.5 seconds and try again.
+    /// If the first attempt fails (e.g., app not initialized), we retry once with a
+    /// `launch` preamble to ensure Things 3 is running.
     private func executeAppleScriptWithRetry(source: String) -> (NSAppleEventDescriptor?, NSDictionary?) {
         let script = NSAppleScript(source: source)
         var error: NSDictionary?
@@ -328,12 +354,16 @@ class Things3Destination: TaskDestination {
             let message = error[NSAppleScript.errorMessage] as? String ?? ""
             debugLog("[Things3] AppleScript failed (attempt 1): \(message)")
 
-            // Retry once after a delay
-            Thread.sleep(forTimeInterval: 1.5)
-            debugLog("[Things3] Retrying AppleScript...")
+            // Retry with an explicit launch + short delay in case Things wasn't ready
+            Thread.sleep(forTimeInterval: 0.5)
+            let retrySource = source.replacingOccurrences(
+                of: "tell application id \"com.culturedcode.ThingsMac\"",
+                with: "tell application id \"com.culturedcode.ThingsMac\"\n                launch\n                delay 0.3"
+            )
+            debugLog("[Things3] Retrying AppleScript with launch...")
 
             var retryError: NSDictionary?
-            let retryScript = NSAppleScript(source: source)
+            let retryScript = NSAppleScript(source: retrySource)
             let retryResult = retryScript?.executeAndReturnError(&retryError)
 
             if let retryError = retryError {

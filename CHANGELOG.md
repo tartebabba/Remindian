@@ -18,6 +18,12 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 - **Fixed destination switching** — `hasRemindersAccess` was blocking all non-Reminders destinations. Renamed to `hasDestinationAccess` with per-destination permission UI and automatic re-request on destination switch
 - **Fixed Things 3 completion writeback** — Completing a task in Things 3 moves it to the Logbook, which wasn't being fetched. The sync engine saw the task as "deleted" and recreated it. Now fetches recently completed tasks (last 7 days) from the Logbook and correctly writes completion back to Obsidian. Also skips redundant destination updates when completion flows from Things→Obsidian
 - **Fixed list filtering for completed tasks** — Already-mapped destination tasks are no longer filtered out by the allowed/excluded lists whitelist. This ensures completion writeback works even when tasks move to a different list (e.g. Things 3 Logbook)
+- **Fixed cross-file dedup collapsing unique tasks** (#46) — Tasks with identical titles in different files (e.g. "Review imported meeting notes" in multiple meeting note files) were incorrectly collapsed into a single reminder. Dedup now only removes duplicates when one copy is in Inbox.md (writeback artifact)
+- **Fixed MTN sandbox permission error** (#45) — `mtn` CLI invocation via `/bin/sh -l` failed with "Operation not permitted" because login shell tries to source `/etc/profile` which is blocked by the macOS sandbox. Removed `-l` flag; PATH is set explicitly
+- **Fixed Things 3 auth token blocking sync** (#45) — Missing or invalid auth token was throwing errors that blocked all sync operations. Now gracefully skips update/move operations when no token is configured, allowing creation-only workflows
+- **Improved Things 3 sync speed** (#45) — Removed unnecessary `launch` + `delay 0.5` from every AppleScript execution (saves ~0.5s per task operation). Reduced retry delay from 1.5s to 0.5s. Retry now adds `launch` only when needed
+- **Added hierarchical tag support for Things 3** (#45) — Tags like `#person/name` now auto-expand to include parent tags (`person`, `person/name`) so Things 3 creates the correct tag hierarchy
+- **Increased Settings panel minimum size** (#45) — Enlarged from 550×500 to 650×600 to prevent content truncation
 
 ### Technical Changes
 - New `SyncConfiguration.FolderMapping` struct with `folderPath` and `remindersList` fields
@@ -30,7 +36,7 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 - New `CalendarFeedDestination` with RFC 5545 .ics generation, VTODO entries, ICS parsing for round-trip
 - `TaskDestinationType` enum expanded: `.asana`, `.linear`, `.calendarFeed` with display names and config properties
 - `PermissionRequestView`, `OnboardingView`, `SettingsView` updated for all 7 destination types
-- 15 new tests (64 total): folder mapping resolution, specificity, encoding, dataview field parsing, priority preservation
+- 16 new tests (65 total): folder mapping resolution, specificity, encoding, dataview field parsing, priority preservation, cross-file dedup
 
 ---
 

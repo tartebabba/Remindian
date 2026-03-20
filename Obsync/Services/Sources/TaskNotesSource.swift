@@ -162,9 +162,10 @@ class TaskNotesSource: TaskSource {
     // MARK: - CLI Execution Helper
 
     /// Run an mtn command and return stdout.
-    /// Uses /bin/sh -l -c to execute the command, which gives access to the user's
-    /// full PATH (including nvm, npm-global, homebrew). This works in the sandbox
-    /// because /bin/sh is always accessible.
+    /// Uses /bin/sh -c to execute the command with an augmented PATH that includes
+    /// common bin directories (homebrew, npm-global, /usr/local/bin).
+    /// Note: we intentionally avoid -l (login shell) because macOS sandbox blocks
+    /// sourcing /etc/profile, causing "Operation not permitted" errors (#45).
     private func runMtn(args: [String], collectionPath: String) throws -> String {
         // Build the full command string for shell execution
         let mtnBinary: String
@@ -182,11 +183,11 @@ class TaskNotesSource: TaskSource {
         let escapedArgs = args.map { $0.replacingOccurrences(of: "'", with: "'\\''") }
         let fullCommand = "'\(mtnBinary)' -p '\(escapedPath)' " + escapedArgs.map { "'\($0)'" }.joined(separator: " ")
 
-        debugLog("[TaskNotes] Running: /bin/sh -l -c \"\(fullCommand)\"")
+        debugLog("[TaskNotes] Running: /bin/sh -c \"\(fullCommand)\"")
 
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-l", "-c", fullCommand]
+        process.arguments = ["-c", fullCommand]
 
         // Ensure common bin paths are in PATH
         var env = ProcessInfo.processInfo.environment

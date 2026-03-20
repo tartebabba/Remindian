@@ -131,6 +131,32 @@ final class DeduplicationTests: XCTestCase {
         XCTAssertEqual(state.mappings.count, 1, "Should update existing mapping, not create duplicate")
     }
 
+    // MARK: - Cross-file dedup (#46)
+
+    func testSameTitleDifferentFilesGetDifferentIds() {
+        // Same task title in different files should produce different IDs (#46)
+        let task1 = SyncTask(
+            title: "Review imported meeting notes",
+            obsidianSource: SyncTask.ObsidianSource(
+                filePath: "/vault/2026-03-20 - Meeting 1.md",
+                lineNumber: 3,
+                originalLine: "- [ ] Review imported meeting notes"
+            )
+        )
+        let task2 = SyncTask(
+            title: "Review imported meeting notes",
+            obsidianSource: SyncTask.ObsidianSource(
+                filePath: "/vault/2026-03-19 - Meeting ABC.md",
+                lineNumber: 3,
+                originalLine: "- [ ] Review imported meeting notes"
+            )
+        )
+
+        let id1 = SyncState.generateObsidianId(task: task1)
+        let id2 = SyncState.generateObsidianId(task: task2)
+        XCTAssertNotEqual(id1, id2, "Same title in different files must get different IDs")
+    }
+
     func testRemoveMapping() {
         var state = SyncState()
         state.addOrUpdateMapping(

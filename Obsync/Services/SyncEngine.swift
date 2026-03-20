@@ -259,15 +259,21 @@ class SyncEngine {
             }
 
             // --- Pass (b): cross-file duplicates (same title, different files) ---
-            // Group remaining tasks by title
+            // Only dedup when at least one copy is in Inbox.md (writeback artifact).
+            // Identical titles in different non-Inbox files are intentional (#46)
+            // and should each get their own destination task.
+            let inboxSuffix = "/Inbox.md"
             var tasksByTitle: [String: [(id: String, task: SyncTask)]] = [:]
             for (id, task) in obsidianMap where !idsToRemove.contains(id) {
                 tasksByTitle[task.title, default: []].append((id: id, task: task))
             }
             for (title, entries) in tasksByTitle where entries.count > 1 {
-                // Multiple copies of the same title — pick the best one, drop the rest.
+                // Only dedup if at least one entry is from Inbox.md
+                let hasInboxCopy = entries.contains { ($0.task.obsidianSource?.filePath ?? "").hasSuffix(inboxSuffix) }
+                guard hasInboxCopy else { continue }
+
+                // Multiple copies including an Inbox copy — keep the non-Inbox one.
                 // Scoring: uncompleted > completed, non-Inbox > Inbox, has existing mapping > no mapping
-                let inboxSuffix = "/Inbox.md"
                 let sorted = entries.sorted { a, b in
                     let aCompleted = a.task.isCompleted ? 1 : 0
                     let bCompleted = b.task.isCompleted ? 1 : 0
@@ -282,7 +288,7 @@ class SyncEngine {
                     let bHasMapping = syncState.mappings.contains { $0.obsidianId == b.id } ? 0 : 1
                     return aHasMapping < bHasMapping
                 }
-                // Keep first (best), remove the rest
+                // Keep first (best), remove the Inbox duplicates
                 for entry in sorted.dropFirst() {
                     idsToRemove.insert(entry.id)
                     debugLog("[SyncEngine] Dedup: cross-file → skipping \"\(title)\" in \(entry.task.obsidianSource?.filePath ?? "?")")
