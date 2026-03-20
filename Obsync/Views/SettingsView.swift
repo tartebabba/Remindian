@@ -130,6 +130,68 @@ struct GeneralSettingsView: View {
                             .foregroundColor(.orange)
                             .padding(.leading, 20)
                     }
+
+                    if syncManager.config.taskDestinationType == .asana {
+                        HStack {
+                            Text("API Token:")
+                                .foregroundColor(.secondary)
+                            SecureField("Personal Access Token", text: $syncManager.config.asanaApiToken)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                        .padding(.leading, 20)
+
+                        Text("Get your token from Asana > My Settings > Apps > Developer Apps > Personal Access Tokens.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
+
+                    if syncManager.config.taskDestinationType == .linear {
+                        HStack {
+                            Text("API Key:")
+                                .foregroundColor(.secondary)
+                            SecureField("Personal API Key", text: $syncManager.config.linearApiKey)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                        .padding(.leading, 20)
+
+                        Text("Get your key from Linear > Settings > API > Personal API Keys.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+
+                        Text("Tasks map to Linear issues. Obsidian lists map to Linear teams.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
+
+                    if syncManager.config.taskDestinationType == .calendarFeed {
+                        HStack {
+                            Text("Output path:")
+                                .foregroundColor(.secondary)
+                            TextField("~/Documents/remindian-tasks.ics", text: $syncManager.config.calendarFeedOutputPath)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 250)
+                        }
+                        .padding(.leading, 20)
+
+                        HStack {
+                            Text("Calendar name:")
+                                .foregroundColor(.secondary)
+                            TextField("Remindian Tasks", text: $syncManager.config.calendarFeedName)
+                                .textFieldStyle(.roundedBorder)
+                                .frame(width: 200)
+                        }
+                        .padding(.leading, 20)
+
+                        Text("Generates a subscribable .ics file with your tasks as VTODO entries. Subscribe to it from Apple Calendar, Google Calendar, or any CalDAV client.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 20)
+                    }
                 } header: {
                     Text("Source & Destination")
                 }

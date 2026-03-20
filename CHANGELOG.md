@@ -9,6 +9,9 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 ### New Features
 - **Folder-to-list mapping** (#40) — Map entire vault folders to specific destination lists. All tasks in any file within the mapped folder (and subfolders) sync to the specified list. More specific folders take priority over broader ones (e.g., `Projects/Work/` beats `Projects/`). Configure in Settings > List Mappings
 - **Dataview inline field support** (#41) — Parse `[key::value]` and `(key::value)` metadata from task lines. Recognized fields: `due`, `start`, `scheduled`, `completed`, `priority`, `tags`, `project`, `list`. Emoji-based metadata takes precedence; dataview fields fill in any gaps. Enable in Settings > Advanced > "Parse dataview inline fields"
+- **Asana destination** (#42) — Sync tasks to Asana via the REST API v1. Tasks map to Asana tasks, lists map to Asana projects. Supports due dates, start dates, completion status, notes. Auth via Personal Access Token
+- **Linear destination** (#43) — Sync tasks to Linear via the GraphQL API. Tasks map to Linear issues, lists map to Linear teams. Supports due dates, priority mapping (Urgent/High/Medium/Low), labels as tags, completion via workflow states. Auth via Personal API Key
+- **Calendar Feed destination** (#44) — Generate a subscribable .ics (iCalendar) file from your tasks. Tasks become RFC 5545 VTODO entries with due dates, priorities, and completion status. Subscribe from Apple Calendar, Google Calendar, or any CalDAV client
 
 ### Bug Fixes
 - **Fixed Todoist sync** (#39) — Todoist REST v2 API is 410 Gone. Switched to API v1 with proper paginated response handling (`{ "results": [...], "next_cursor": "..." }`) and fixed field name mismatch (`checked` instead of `isCompleted`)
@@ -20,6 +23,11 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 - New `SyncTask.parseDataviewFields(from:into:)` static method parses both bracket and parenthetical syntax
 - `ObsidianTasksSource.scanTasks()` applies dataview parsing when `enableDataviewFormat` is enabled
 - Mapping priority: explicit tag > file path > folder path > auto-capitalize tag > default list
+- New `AsanaDestination` with REST API, workspace/project resolution, paginated task fetching, rate limit retry
+- New `LinearDestination` with GraphQL API, team/workflow state resolution, priority mapping, paginated issue fetching
+- New `CalendarFeedDestination` with RFC 5545 .ics generation, VTODO entries, ICS parsing for round-trip
+- `TaskDestinationType` enum expanded: `.asana`, `.linear`, `.calendarFeed` with display names and config properties
+- `PermissionRequestView`, `OnboardingView`, `SettingsView` updated for all 7 destination types
 - 15 new tests (64 total): folder mapping resolution, specificity, encoding, dataview field parsing, priority preservation
 
 ---

@@ -120,6 +120,19 @@ class SyncManager: ObservableObject {
             destination.refreshToken = config.tickTickRefreshToken
             destination.tokenExpiry = config.tickTickTokenExpiry
             return destination
+        case .asana:
+            let destination = AsanaDestination()
+            destination.apiToken = config.asanaApiToken
+            return destination
+        case .linear:
+            let destination = LinearDestination()
+            destination.apiKey = config.linearApiKey
+            return destination
+        case .calendarFeed:
+            let destination = CalendarFeedDestination()
+            destination.outputPath = config.calendarFeedOutputPath
+            destination.calendarName = config.calendarFeedName
+            return destination
         }
     }
 

@@ -155,6 +155,9 @@ struct PermissionRequestView: View {
         case .things3: return "checklist"
         case .todoist: return "key.fill"
         case .tickTick: return "link.circle"
+        case .asana: return "key.fill"
+        case .linear: return "key.fill"
+        case .calendarFeed: return "calendar.badge.plus"
         }
     }
 
@@ -164,6 +167,9 @@ struct PermissionRequestView: View {
         case .things3: return "Things 3 Access Required"
         case .todoist: return "Todoist Configuration Needed"
         case .tickTick: return "TickTick Connection Needed"
+        case .asana: return "Asana Configuration Needed"
+        case .linear: return "Linear Configuration Needed"
+        case .calendarFeed: return "Calendar Feed Configuration Needed"
         }
     }
 
@@ -177,6 +183,12 @@ struct PermissionRequestView: View {
             return "Enter your Todoist API token in Settings > General to start syncing. You can find your token in Todoist > Settings > Integrations > Developer."
         case .tickTick:
             return "Click \"Connect TickTick\" in Settings > General to authorize Remindian via OAuth."
+        case .asana:
+            return "Enter your Asana Personal Access Token in Settings > General. Get it from Asana > My Settings > Apps > Developer Apps."
+        case .linear:
+            return "Enter your Linear API key in Settings > General. Get it from Linear > Settings > API > Personal API Keys."
+        case .calendarFeed:
+            return "Set the output path for your .ics file in Settings > General. The file will be generated on each sync."
         }
     }
 
@@ -190,11 +202,22 @@ struct PermissionRequestView: View {
             return "Your token is stored locally and never shared"
         case .tickTick:
             return "OAuth tokens are stored locally and refresh automatically"
+        case .asana:
+            return "Your token is stored locally and never shared"
+        case .linear:
+            return "Your API key is stored locally and never shared"
+        case .calendarFeed:
+            return "Subscribe to the .ics file from Apple Calendar, Google Calendar, or any CalDAV client"
         }
     }
 
     private var needsSettingsButton: Bool {
-        destinationType == .todoist || destinationType == .tickTick
+        switch destinationType {
+        case .appleReminders, .things3:
+            return false
+        case .todoist, .tickTick, .asana, .linear, .calendarFeed:
+            return true
+        }
     }
 }
 

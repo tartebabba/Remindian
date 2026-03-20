@@ -106,6 +106,16 @@ class SyncConfiguration: ObservableObject, Codable {
     @Published var tickTickRefreshToken: String
     @Published var tickTickTokenExpiry: Date?
 
+    // MARK: - Asana
+    @Published var asanaApiToken: String
+
+    // MARK: - Linear
+    @Published var linearApiKey: String
+
+    // MARK: - Calendar Feed (.ics)
+    @Published var calendarFeedOutputPath: String
+    @Published var calendarFeedName: String
+
     enum TaskSourceType: String, Codable, CaseIterable {
         case obsidianTasks = "obsidianTasks"
         case taskNotes = "taskNotes"
@@ -123,6 +133,9 @@ class SyncConfiguration: ObservableObject, Codable {
         case things3 = "things3"
         case todoist = "todoist"
         case tickTick = "tickTick"
+        case asana = "asana"
+        case linear = "linear"
+        case calendarFeed = "calendarFeed"
 
         var displayName: String {
             switch self {
@@ -130,6 +143,9 @@ class SyncConfiguration: ObservableObject, Codable {
             case .things3: return "Things 3"
             case .todoist: return "Todoist"
             case .tickTick: return "TickTick"
+            case .asana: return "Asana"
+            case .linear: return "Linear"
+            case .calendarFeed: return "Calendar Feed (.ics)"
             }
         }
     }
@@ -181,6 +197,9 @@ class SyncConfiguration: ObservableObject, Codable {
         case globalFilter
         case todoistApiToken
         case tickTickAccessToken, tickTickRefreshToken, tickTickTokenExpiry
+        case asanaApiToken
+        case linearApiKey
+        case calendarFeedOutputPath, calendarFeedName
     }
 
     init(
@@ -236,7 +255,11 @@ class SyncConfiguration: ObservableObject, Codable {
         todoistApiToken: String = "",
         tickTickAccessToken: String = "",
         tickTickRefreshToken: String = "",
-        tickTickTokenExpiry: Date? = nil
+        tickTickTokenExpiry: Date? = nil,
+        asanaApiToken: String = "",
+        linearApiKey: String = "",
+        calendarFeedOutputPath: String = "",
+        calendarFeedName: String = "Remindian Tasks"
     ) {
         self.vaultPath = vaultPath
         self.syncIntervalMinutes = syncIntervalMinutes
@@ -291,6 +314,10 @@ class SyncConfiguration: ObservableObject, Codable {
         self.tickTickAccessToken = tickTickAccessToken
         self.tickTickRefreshToken = tickTickRefreshToken
         self.tickTickTokenExpiry = tickTickTokenExpiry
+        self.asanaApiToken = asanaApiToken
+        self.linearApiKey = linearApiKey
+        self.calendarFeedOutputPath = calendarFeedOutputPath
+        self.calendarFeedName = calendarFeedName
     }
 
     required init(from decoder: Decoder) throws {
@@ -348,6 +375,10 @@ class SyncConfiguration: ObservableObject, Codable {
         tickTickAccessToken = try container.decodeIfPresent(String.self, forKey: .tickTickAccessToken) ?? ""
         tickTickRefreshToken = try container.decodeIfPresent(String.self, forKey: .tickTickRefreshToken) ?? ""
         tickTickTokenExpiry = try container.decodeIfPresent(Date.self, forKey: .tickTickTokenExpiry)
+        asanaApiToken = try container.decodeIfPresent(String.self, forKey: .asanaApiToken) ?? ""
+        linearApiKey = try container.decodeIfPresent(String.self, forKey: .linearApiKey) ?? ""
+        calendarFeedOutputPath = try container.decodeIfPresent(String.self, forKey: .calendarFeedOutputPath) ?? ""
+        calendarFeedName = try container.decodeIfPresent(String.self, forKey: .calendarFeedName) ?? "Remindian Tasks"
     }
 
     func encode(to encoder: Encoder) throws {
@@ -405,6 +436,10 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(tickTickAccessToken, forKey: .tickTickAccessToken)
         try container.encode(tickTickRefreshToken, forKey: .tickTickRefreshToken)
         try container.encodeIfPresent(tickTickTokenExpiry, forKey: .tickTickTokenExpiry)
+        try container.encode(asanaApiToken, forKey: .asanaApiToken)
+        try container.encode(linearApiKey, forKey: .linearApiKey)
+        try container.encode(calendarFeedOutputPath, forKey: .calendarFeedOutputPath)
+        try container.encode(calendarFeedName, forKey: .calendarFeedName)
     }
 
     // MARK: - Persistence

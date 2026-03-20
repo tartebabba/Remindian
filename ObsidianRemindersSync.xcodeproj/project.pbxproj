@@ -38,6 +38,9 @@
 		029 /* TodoistDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 131; };
 		030 /* TickTickDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 132; };
 		031 /* OAuthCallbackHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = 133; };
+		032 /* CalendarFeedDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134; };
+		033 /* AsanaDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 135; };
+		034 /* LinearDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136; };
 		T01 /* TaskParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T10; };
 		T02 /* DeduplicationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T11; };
 		T03 /* TaskNotesParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T12; };
@@ -89,6 +92,9 @@
 		131 /* TodoistDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TodoistDestination.swift; sourceTree = "<group>"; };
 		132 /* TickTickDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickTickDestination.swift; sourceTree = "<group>"; };
 		133 /* OAuthCallbackHandler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OAuthCallbackHandler.swift; sourceTree = "<group>"; };
+		134 /* CalendarFeedDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarFeedDestination.swift; sourceTree = "<group>"; };
+		135 /* AsanaDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsanaDestination.swift; sourceTree = "<group>"; };
+		136 /* LinearDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinearDestination.swift; sourceTree = "<group>"; };
 		T00 /* RemindianTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RemindianTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		T10 /* TaskParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskParserTests.swift; sourceTree = "<group>"; };
 		T11 /* DeduplicationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeduplicationTests.swift; sourceTree = "<group>"; };
@@ -216,6 +222,9 @@
 				129 /* Things3Destination.swift */,
 				131 /* TodoistDestination.swift */,
 				132 /* TickTickDestination.swift */,
+				134 /* CalendarFeedDestination.swift */,
+				135 /* AsanaDestination.swift */,
+				136 /* LinearDestination.swift */,
 			);
 			path = Destinations;
 			sourceTree = "<group>";
@@ -352,6 +361,9 @@
 				029 /* TodoistDestination.swift in Sources */,
 				030 /* TickTickDestination.swift in Sources */,
 				031 /* OAuthCallbackHandler.swift in Sources */,
+				032 /* CalendarFeedDestination.swift in Sources */,
+				033 /* AsanaDestination.swift in Sources */,
+				034 /* LinearDestination.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

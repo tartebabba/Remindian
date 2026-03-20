@@ -138,12 +138,9 @@ struct OnboardingView: View {
                             Text(type.displayName).tag(type)
                         }
                     }
-                    .pickerStyle(.segmented)
                     .padding(4)
 
-                    Text(syncManager.config.taskDestinationType == .appleReminders
-                         ? "Syncs to Apple Reminders via EventKit"
-                         : "Syncs to Things 3 via AppleScript + URL scheme")
+                    Text(destinationDescription)
                         .font(.caption2)
                         .foregroundColor(.secondary)
                         .padding(.horizontal, 4)
@@ -153,6 +150,50 @@ struct OnboardingView: View {
                             Text("Auth Token:")
                                 .font(.caption)
                             SecureField("From Things Settings", text: $syncManager.config.things3AuthToken)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12))
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
+                    if syncManager.config.taskDestinationType == .todoist {
+                        HStack {
+                            Text("API Token:")
+                                .font(.caption)
+                            SecureField("From Todoist Settings", text: $syncManager.config.todoistApiToken)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12))
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
+                    if syncManager.config.taskDestinationType == .asana {
+                        HStack {
+                            Text("API Token:")
+                                .font(.caption)
+                            SecureField("Personal Access Token", text: $syncManager.config.asanaApiToken)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12))
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
+                    if syncManager.config.taskDestinationType == .linear {
+                        HStack {
+                            Text("API Key:")
+                                .font(.caption)
+                            SecureField("Personal API Key", text: $syncManager.config.linearApiKey)
+                                .textFieldStyle(.roundedBorder)
+                                .font(.system(size: 12))
+                        }
+                        .padding(.horizontal, 4)
+                    }
+
+                    if syncManager.config.taskDestinationType == .calendarFeed {
+                        HStack {
+                            Text("Output path:")
+                                .font(.caption)
+                            TextField("~/Documents/tasks.ics", text: $syncManager.config.calendarFeedOutputPath)
                                 .textFieldStyle(.roundedBorder)
                                 .font(.system(size: 12))
                         }
@@ -392,6 +433,18 @@ struct OnboardingView: View {
     }
 
     // MARK: - Helpers
+
+    private var destinationDescription: String {
+        switch syncManager.config.taskDestinationType {
+        case .appleReminders: return "Syncs to Apple Reminders via EventKit"
+        case .things3: return "Syncs to Things 3 via AppleScript + URL scheme"
+        case .todoist: return "Syncs to Todoist via the REST API"
+        case .tickTick: return "Syncs to TickTick via OAuth + REST API"
+        case .asana: return "Syncs to Asana tasks via the REST API"
+        case .linear: return "Syncs to Linear issues via the GraphQL API"
+        case .calendarFeed: return "Generates a subscribable .ics calendar file"
+        }
+    }
 
     private var canAdvance: Bool {
         switch currentStep {
