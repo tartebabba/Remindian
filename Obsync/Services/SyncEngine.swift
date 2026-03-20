@@ -190,11 +190,19 @@ class SyncEngine {
             var remindersTasks = try await destination.fetchAllTasks()
             debugLog("[SyncEngine] Found \(remindersTasks.count) destination tasks")
 
+            // Build a set of already-mapped destination task IDs so we never
+            // filter them out. This is important for completed tasks that moved
+            // to a different list (e.g. Things 3 Logbook) — they must still be
+            // visible to the sync engine for completion writeback to work.
+            let mappedDestinationIds = Set(syncState.mappings.map { $0.remindersId })
+
             // Filter by synced Reminders lists if configured (whitelist)
             if !config.syncedRemindersLists.isEmpty {
                 let allowedLists = Set(config.syncedRemindersLists.map { $0.lowercased() })
                 let beforeCount = remindersTasks.count
                 remindersTasks = remindersTasks.filter { task in
+                    // Always keep already-mapped tasks (completion writeback needs them)
+                    if let id = task.remindersId, mappedDestinationIds.contains(id) { return true }
                     guard let list = task.targetList else { return false }
                     return allowedLists.contains(list.lowercased())
                 }
@@ -206,6 +214,8 @@ class SyncEngine {
                 let excludedLists = Set(config.excludedRemindersLists.map { $0.lowercased() })
                 let beforeCount = remindersTasks.count
                 remindersTasks = remindersTasks.filter { task in
+                    // Always keep already-mapped tasks (completion writeback needs them)
+                    if let id = task.remindersId, mappedDestinationIds.contains(id) { return true }
                     guard let list = task.targetList else { return true }
                     return !excludedLists.contains(list.lowercased())
                 }
@@ -518,17 +528,26 @@ class SyncEngine {
                                 }
                             }
 
-                            if !config.dryRunMode {
-                                try await destination.updateTask(
-                                    withId: mapping.remindersId,
-                                    from: taskForReminders,
-                                    config: config
-                                )
+                            // Skip the destination update when the only change was
+                            // completion flowing FROM the destination (e.g. Things 3 Logbook).
+                            // The task is already in its final state there; sending a redundant
+                            // update can fail for tasks in the Logbook/archive.
+                            let completionFromDestination = completionDiffers && rTask.isCompleted && !oTask.isCompleted
+                            let needsDestinationUpdate = !completionFromDestination || oChanged
 
-                                // Move to correct list if needed
-                                let targetList = config.resolveTargetList(tag: oTask.targetList, filePath: oTask.obsidianSource?.filePath)
-                                if targetList != rTask.targetList {
-                                    try await destination.moveTask(withId: mapping.remindersId, toList: targetList)
+                            if !config.dryRunMode {
+                                if needsDestinationUpdate {
+                                    try await destination.updateTask(
+                                        withId: mapping.remindersId,
+                                        from: taskForReminders,
+                                        config: config
+                                    )
+
+                                    // Move to correct list if needed
+                                    let targetList = config.resolveTargetList(tag: oTask.targetList, filePath: oTask.obsidianSource?.filePath)
+                                    if targetList != rTask.targetList {
+                                        try await destination.moveTask(withId: mapping.remindersId, toList: targetList)
+                                    }
                                 }
 
                                 syncState.addOrUpdateMapping(

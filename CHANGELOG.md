@@ -16,6 +16,8 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 ### Bug Fixes
 - **Fixed Todoist sync** (#39) — Todoist REST v2 API is 410 Gone. Switched to API v1 with proper paginated response handling (`{ "results": [...], "next_cursor": "..." }`) and fixed field name mismatch (`checked` instead of `isCompleted`)
 - **Fixed destination switching** — `hasRemindersAccess` was blocking all non-Reminders destinations. Renamed to `hasDestinationAccess` with per-destination permission UI and automatic re-request on destination switch
+- **Fixed Things 3 completion writeback** — Completing a task in Things 3 moves it to the Logbook, which wasn't being fetched. The sync engine saw the task as "deleted" and recreated it. Now fetches recently completed tasks (last 7 days) from the Logbook and correctly writes completion back to Obsidian. Also skips redundant destination updates when completion flows from Things→Obsidian
+- **Fixed list filtering for completed tasks** — Already-mapped destination tasks are no longer filtered out by the allowed/excluded lists whitelist. This ensures completion writeback works even when tasks move to a different list (e.g. Things 3 Logbook)
 
 ### Technical Changes
 - New `SyncConfiguration.FolderMapping` struct with `folderPath` and `remindersList` fields

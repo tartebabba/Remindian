@@ -54,12 +54,20 @@ class Things3Destination: TaskDestination {
     func fetchAllTasks() async throws -> [SyncTask] {
         var tasks: [SyncTask] = []
 
-        // Fetch from Today, Inbox, Anytime, Upcoming, Someday
-        let lists = ["Today", "Inbox", "Anytime", "Upcoming", "Someday"]
-        for listName in lists {
+        // Fetch from active lists
+        let activeLists = ["Today", "Inbox", "Anytime", "Upcoming", "Someday"]
+        for listName in activeLists {
             let listTasks = try fetchTasksFromList(listName)
             tasks.append(contentsOf: listTasks)
         }
+
+        // Fetch recently completed tasks from Logbook.
+        // When a task is completed in Things 3, it moves to the Logbook.
+        // Without this, the sync engine sees the task as "deleted" and recreates it.
+        // We limit to the last 7 days to avoid fetching thousands of old completed tasks.
+        let logbookTasks = try fetchRecentLogbookTasks(withinDays: 7)
+        tasks.append(contentsOf: logbookTasks)
+        debugLog("[Things3] Fetched \(logbookTasks.count) recently completed tasks from Logbook")
 
         return tasks
     }
@@ -354,6 +362,110 @@ class Things3Destination: TaskDestination {
         if !success {
             debugLog("[Things3] URL scheme update failed for task \(params["id"] ?? "?")")
         }
+    }
+
+    /// Fetch recently completed tasks from the Things 3 Logbook.
+    /// Uses AppleScript date comparison to limit results to `withinDays` days,
+    /// avoiding the performance hit of fetching thousands of old completed tasks.
+    private func fetchRecentLogbookTasks(withinDays days: Int) throws -> [SyncTask] {
+        // AppleScript: iterate Logbook tasks, skip those completed more than N days ago.
+        // Things 3 Logbook is sorted by completion date (newest first), so we stop
+        // early once we hit a task older than the cutoff.
+        let script = NSAppleScript(source: """
+            tell application id "com.culturedcode.ThingsMac"
+                set cutoff to (current date) - \(days) * days
+                set todoList to {}
+                repeat with toDo in to dos of list "Logbook"
+                    set todoCompletionDate to ""
+                    try
+                        set todoCompletionDate to completion date of toDo
+                    end try
+                    if todoCompletionDate is not "" then
+                        if todoCompletionDate < cutoff then exit repeat
+                    end if
+
+                    set todoId to id of toDo
+                    set todoName to name of toDo
+                    set todoNotes to notes of toDo
+                    set todoStatus to status of toDo
+                    set todoDueDate to ""
+                    try
+                        set todoDueDate to due date of toDo as string
+                    end try
+                    set todoCompletionDateStr to ""
+                    try
+                        set todoCompletionDateStr to completion date of toDo as string
+                    end try
+                    set todoTagNames to tag names of toDo
+                    set todoProject to ""
+                    try
+                        set todoProject to name of project of toDo
+                    end try
+                    set todoArea to ""
+                    try
+                        set todoArea to name of area of toDo
+                    end try
+
+                    set todoData to todoId & "|||" & todoName & "|||" & todoNotes & "|||" & (todoStatus as string) & "|||" & todoDueDate & "|||" & todoCompletionDateStr & "|||" & todoTagNames & "|||" & todoProject & "|||" & todoArea
+                    set end of todoList to todoData
+                end repeat
+                set AppleScript's text item delimiters to "~~~"
+                return todoList as string
+            end tell
+        """)
+
+        var error: NSDictionary?
+        guard let result = script?.executeAndReturnError(&error),
+              let resultString = result.stringValue else {
+            if let error = error {
+                let message = error[NSAppleScript.errorMessage] as? String ?? "Unknown error"
+                debugLog("[Things3] AppleScript error fetching Logbook: \(message)")
+            }
+            return []
+        }
+
+        guard !resultString.isEmpty else { return [] }
+
+        var tasks: [SyncTask] = []
+        let todoStrings = resultString.components(separatedBy: "~~~")
+
+        for todoStr in todoStrings {
+            let parts = todoStr.components(separatedBy: "|||")
+            guard parts.count >= 4 else { continue }
+
+            let id = parts[0]
+            let name = parts[1]
+            let notes = parts.count > 2 ? parts[2] : ""
+            let statusStr = parts.count > 3 ? parts[3] : ""
+            let dueDateStr = parts.count > 4 ? parts[4] : ""
+            let completionDateStr = parts.count > 5 ? parts[5] : ""
+            let tagNames = parts.count > 6 ? parts[6] : ""
+            let project = parts.count > 7 ? parts[7] : ""
+            let area = parts.count > 8 ? parts[8] : ""
+
+            let isCompleted = statusStr.contains("completed")
+            let dueDate = parseAppleScriptDate(dueDateStr)
+            let completionDate = parseAppleScriptDate(completionDateStr)
+
+            let tags = tagNames.isEmpty ? [] : tagNames.components(separatedBy: ", ").map { "#\($0)" }
+            let targetList = !project.isEmpty ? project : (!area.isEmpty ? area : "Logbook")
+
+            let task = SyncTask(
+                title: name,
+                isCompleted: isCompleted,
+                priority: .none,
+                dueDate: dueDate,
+                completedDate: completionDate,
+                tags: tags,
+                targetList: targetList,
+                notes: notes.isEmpty ? nil : notes,
+                remindersId: id,
+                lastModified: completionDate ?? Date()
+            )
+            tasks.append(task)
+        }
+
+        return tasks
     }
 
     /// Fetch tasks from a specific Things 3 list via AppleScript.
