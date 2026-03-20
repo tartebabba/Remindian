@@ -244,28 +244,28 @@ struct GeneralSettingsView: View {
                     Toggle("Include time in due dates", isOn: $syncManager.config.includeDueTime)
                         .help("When disabled, reminders will be all-day tasks without a specific time")
                 } header: {
-                    Label("Obsidian \u{2192} Reminders", systemImage: "arrow.right")
+                    Label("Obsidian \u{2192} \(syncManager.config.taskDestinationType.displayName)", systemImage: "arrow.right")
                 }
 
-                // Reminders → Obsidian settings (#24 — separate sync directions)
+                // Destination → Obsidian settings (#24 — separate sync directions)
                 Section {
                     Toggle("Sync completions back", isOn: $syncManager.config.enableCompletionWriteback)
-                        .help("Marking a task complete in Reminders will update the checkbox and add a completion date in Obsidian")
+                        .help("Marking a task complete in \(syncManager.config.taskDestinationType.displayName) will update the checkbox and add a completion date in Obsidian")
 
                     Toggle("Sync due date changes back", isOn: $syncManager.config.enableDueDateWriteback)
-                        .help("Changing a due date in Reminders will update the \u{1F4C5} date in Obsidian")
+                        .help("Changing a due date in \(syncManager.config.taskDestinationType.displayName) will update the \u{1F4C5} date in Obsidian")
 
                     Toggle("Sync start date changes back", isOn: $syncManager.config.enableStartDateWriteback)
-                        .help("Changing a start date in Reminders will update the \u{1F6EB} date in Obsidian")
+                        .help("Changing a start date in \(syncManager.config.taskDestinationType.displayName) will update the \u{1F6EB} date in Obsidian")
 
                     Toggle("Sync priority changes back", isOn: $syncManager.config.enablePriorityWriteback)
-                        .help("Changing priority in Reminders will update the priority emoji in Obsidian")
+                        .help("Changing priority in \(syncManager.config.taskDestinationType.displayName) will update the priority emoji in Obsidian")
 
                     Toggle("Sync tag changes back", isOn: $syncManager.config.enableTagWriteback)
-                        .help("Tag changes in Reminders (e.g., from GoodTask) will update #tags in Obsidian")
+                        .help("Tag changes in \(syncManager.config.taskDestinationType.displayName) will update #tags in Obsidian")
 
-                    Toggle("Write new Reminders tasks to Obsidian", isOn: $syncManager.config.enableNewTaskWriteback)
-                        .help("New tasks created in Reminders will be appended to an inbox file in your vault")
+                    Toggle("Write new \(syncManager.config.taskDestinationType.displayName) tasks to Obsidian", isOn: $syncManager.config.enableNewTaskWriteback)
+                        .help("New tasks created in \(syncManager.config.taskDestinationType.displayName) will be appended to an inbox file in your vault")
 
                     if syncManager.config.enableNewTaskWriteback {
                         HStack {
@@ -289,7 +289,7 @@ struct GeneralSettingsView: View {
                         }
                     }
                 } header: {
-                    Label("Reminders \u{2192} Obsidian (Writeback)", systemImage: "arrow.left")
+                    Label("\(syncManager.config.taskDestinationType.displayName) \u{2192} Obsidian (Writeback)", systemImage: "arrow.left")
                 }
 
                 Section {
@@ -300,7 +300,7 @@ struct GeneralSettingsView: View {
                 }
 
                 Section {
-                    Picker("Default Reminders list", selection: $syncManager.config.defaultList) {
+                    Picker("Default list", selection: $syncManager.config.defaultList) {
                         ForEach(syncManager.availableLists, id: \.self) { list in
                             Text(list).tag(list)
                         }
@@ -952,7 +952,7 @@ struct AdvancedSettingsView: View {
                     Text("Exclude lists")
                 }
             } header: {
-                Text("Reminders List Filtering")
+                Text("\(syncManager.config.taskDestinationType.displayName) List Filtering")
             }
 
             Section {

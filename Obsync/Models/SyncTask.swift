@@ -521,13 +521,19 @@ extension SyncTask {
             noteParts.append("Tags: \(tags.joined(separator: " "))")
         }
 
-        // Add obsidian:// link to the task file
+        // Add obsidian:// link to the reminder's URL field and notes
         if addTaskLink, let source = obsidianSource, !vaultPath.isEmpty {
             let vaultName = URL(fileURLWithPath: vaultPath).lastPathComponent
             let filePath = source.filePath.hasPrefix("/") ? String(source.filePath.dropFirst()) : source.filePath
             let encodedVault = vaultName.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? vaultName
             let encodedFile = filePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? filePath
-            noteParts.append("obsidian://open?vault=\(encodedVault)&file=\(encodedFile)")
+            let obsidianURL = "obsidian://open?vault=\(encodedVault)&file=\(encodedFile)"
+
+            // Set the URL field (clickable in Reminders.app and GoodTask)
+            reminder.url = URL(string: obsidianURL)
+
+            // Also keep in notes as fallback for apps that don't show the URL field
+            noteParts.append(obsidianURL)
         }
 
         if noteParts.isEmpty {
