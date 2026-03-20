@@ -4,7 +4,7 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
-## v4.2.0-beta (March 2026)
+## v4.2.0 (March 2026)
 
 ### New Features
 - **Folder-to-list mapping** (#40) — Map entire vault folders to specific destination lists. All tasks in any file within the mapped folder (and subfolders) sync to the specified list. More specific folders take priority over broader ones (e.g., `Projects/Work/` beats `Projects/`). Configure in Settings > List Mappings
