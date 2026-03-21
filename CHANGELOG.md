@@ -4,6 +4,15 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.2.1 (March 2026)
+
+### Bug Fixes
+- **Fixed crash on launch** — Eliminated 6 force-unwrap (`first!`) calls on `applicationSupportDirectory` that could crash the app immediately on startup if the directory wasn't available. All persistence code now uses a safe `remindianAppSupportDir()` helper that returns nil instead of crashing
+- **Hardened startup sequence** — Each initialization step in `AppDelegate` is now isolated with diagnostic logging, so one subsystem failure doesn't take down the entire app
+- **Note for unsigned app users** — If macOS blocks the app with "damaged" or "quit unexpectedly", run `xattr -cr /Applications/Remindian.app` in Terminal before opening
+
+---
+
 ## v4.2.0 (March 2026)
 
 ### New Features

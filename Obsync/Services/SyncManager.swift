@@ -3,12 +3,19 @@ import SwiftUI
 import Combine
 import ServiceManagement
 
+/// Safe application support directory — returns nil instead of crashing.
+/// All persistence code should use this instead of force-unwrapping `.first!`.
+func remindianAppSupportDir() -> URL? {
+    guard let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else { return nil }
+    let dir = appSupport.appendingPathComponent("Remindian", isDirectory: true)
+    try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    return dir
+}
+
 /// Write diagnostic logs to a file (since print/NSLog may not be visible from sandboxed GUI apps)
 func debugLog(_ message: String) {
-    let logFile = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        .appendingPathComponent("Remindian", isDirectory: true)
-        .appendingPathComponent("debug.log")
-    try? FileManager.default.createDirectory(at: logFile.deletingLastPathComponent(), withIntermediateDirectories: true)
+    guard let appDir = remindianAppSupportDir() else { return }
+    let logFile = appDir.appendingPathComponent("debug.log")
     let timestamp = ISO8601DateFormatter().string(from: Date())
     let line = "[\(timestamp)] \(message)\n"
     if let data = line.data(using: .utf8) {

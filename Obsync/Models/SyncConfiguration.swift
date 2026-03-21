@@ -444,25 +444,25 @@ class SyncConfiguration: ObservableObject, Codable {
 
     // MARK: - Persistence
 
-    private static var configURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appFolder = appSupport.appendingPathComponent("Remindian", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
+    private static var configURL: URL? {
+        guard let appFolder = remindianAppSupportDir() else { return nil }
         return appFolder.appendingPathComponent("config.json")
     }
 
     func save() {
+        guard let url = Self.configURL else { return }
         do {
             let data = try JSONEncoder().encode(self)
-            try data.write(to: Self.configURL)
+            try data.write(to: url)
         } catch {
             print("Failed to save configuration: \(error)")
         }
     }
 
     static func load() -> SyncConfiguration {
+        guard let url = configURL else { return SyncConfiguration() }
         do {
-            let data = try Data(contentsOf: configURL)
+            let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(SyncConfiguration.self, from: data)
         } catch {
             return SyncConfiguration()

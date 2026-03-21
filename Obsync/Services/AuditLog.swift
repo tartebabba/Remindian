@@ -6,14 +6,13 @@ class AuditLog {
     static let shared = AuditLog()
     private let maxLogSize: UInt64 = 5 * 1024 * 1024 // 5 MB
 
-    private var logURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let dir = appSupport.appendingPathComponent("Remindian", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    private var logURL: URL? {
+        guard let dir = remindianAppSupportDir() else { return nil }
         return dir.appendingPathComponent("audit.log")
     }
 
     func log(_ message: String) {
+        guard let logURL = logURL else { return }
         let formatter = ISO8601DateFormatter()
         let line = "[\(formatter.string(from: Date()))] \(message)\n"
 
@@ -40,7 +39,8 @@ class AuditLog {
     }
 
     private func rotateIfNeeded() {
-        guard let attrs = try? FileManager.default.attributesOfItem(atPath: logURL.path),
+        guard let logURL = logURL,
+              let attrs = try? FileManager.default.attributesOfItem(atPath: logURL.path),
               let size = attrs[.size] as? UInt64,
               size > maxLogSize else { return }
 
@@ -51,7 +51,7 @@ class AuditLog {
     }
 
     /// Get the log file URL (for UI "View Audit Log" button).
-    var auditLogURL: URL {
+    var auditLogURL: URL? {
         return logURL
     }
 }

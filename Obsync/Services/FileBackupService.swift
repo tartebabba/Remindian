@@ -9,17 +9,18 @@ class FileBackupService {
     private let maxBackupsPerFile = 50
     private let maxBackupAgeDays = 7
 
-    private var backupDir: URL {
-        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        return appSupport
-            .appendingPathComponent("Remindian", isDirectory: true)
-            .appendingPathComponent("backups", isDirectory: true)
+    private var backupDir: URL? {
+        guard let appDir = remindianAppSupportDir() else { return nil }
+        return appDir.appendingPathComponent("backups", isDirectory: true)
     }
 
     /// Create a backup of a file before modifying it.
     /// Returns the backup file URL.
     @discardableResult
     func backupFile(at fileURL: URL) throws -> URL {
+        guard let backupDir = backupDir else {
+            throw NSError(domain: "FileBackupService", code: 1, userInfo: [NSLocalizedDescriptionKey: "Cannot access application support directory"])
+        }
         // Create backup directory if needed
         try fileManager.createDirectory(at: backupDir, withIntermediateDirectories: true)
 
@@ -50,7 +51,8 @@ class FileBackupService {
 
     /// Remove old backups exceeding limits.
     private func pruneBackups(forFileNamed baseName: String) {
-        guard let contents = try? fileManager.contentsOfDirectory(
+        guard let backupDir = backupDir,
+              let contents = try? fileManager.contentsOfDirectory(
             at: backupDir,
             includingPropertiesForKeys: [.creationDateKey],
             options: .skipsHiddenFiles
@@ -78,7 +80,7 @@ class FileBackupService {
     }
 
     /// Get the backup directory URL (for UI "View Backups" button).
-    var backupDirectoryURL: URL {
+    var backupDirectoryURL: URL? {
         return backupDir
     }
 }

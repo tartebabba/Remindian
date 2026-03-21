@@ -61,25 +61,25 @@ class SyncLog: Codable {
 
     // MARK: - Persistence
 
-    private static var logURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appFolder = appSupport.appendingPathComponent("Remindian", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
+    private static var logURL: URL? {
+        guard let appFolder = remindianAppSupportDir() else { return nil }
         return appFolder.appendingPathComponent("sync_log.json")
     }
 
     func save() {
+        guard let url = Self.logURL else { return }
         do {
             let data = try JSONEncoder().encode(self)
-            try data.write(to: Self.logURL)
+            try data.write(to: url)
         } catch {
             print("Failed to save sync log: \(error)")
         }
     }
 
     static func load() -> SyncLog {
+        guard let url = logURL else { return SyncLog() }
         do {
-            let data = try Data(contentsOf: logURL)
+            let data = try Data(contentsOf: url)
             return try JSONDecoder().decode(SyncLog.self, from: data)
         } catch {
             return SyncLog()

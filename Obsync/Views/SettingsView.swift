@@ -970,11 +970,15 @@ struct AdvancedSettingsView: View {
 
             Section {
                 Button("Open Backups Folder") {
-                    NSWorkspace.shared.open(FileBackupService.shared.backupDirectoryURL)
+                    if let url = FileBackupService.shared.backupDirectoryURL {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
 
                 Button("Open Audit Log") {
-                    NSWorkspace.shared.open(AuditLog.shared.auditLogURL)
+                    if let url = AuditLog.shared.auditLogURL {
+                        NSWorkspace.shared.open(url)
+                    }
                 }
 
                 Text("Backups are created automatically before any Obsidian file modification.")

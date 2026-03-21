@@ -42,17 +42,16 @@ class SyncState: Codable {
 
     // MARK: - Persistence
 
-    private static var stateURL: URL {
-        let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let appFolder = appSupport.appendingPathComponent("Remindian", isDirectory: true)
-        try? FileManager.default.createDirectory(at: appFolder, withIntermediateDirectories: true)
+    private static var stateURL: URL? {
+        guard let appFolder = remindianAppSupportDir() else { return nil }
         return appFolder.appendingPathComponent("sync_state.json")
     }
 
     func save() {
+        guard let url = Self.stateURL else { return }
         do {
             let data = try JSONEncoder().encode(self)
-            try data.write(to: Self.stateURL)
+            try data.write(to: url)
         } catch {
             print("Failed to save sync state: \(error)")
         }
@@ -60,7 +59,8 @@ class SyncState: Codable {
 
     static func load() -> SyncState {
         do {
-            let data = try Data(contentsOf: stateURL)
+            guard let url = stateURL else { return SyncState() }
+            let data = try Data(contentsOf: url)
             let state = try JSONDecoder().decode(SyncState.self, from: data)
 
             // Handle state version migrations

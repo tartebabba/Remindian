@@ -43,34 +43,30 @@ struct RemindianApp: App {
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Apply dock icon visibility setting
-        updateDockIconVisibility()
+        // Each step is isolated so one failure doesn't crash the whole app.
+        // Subsystem failures are logged but non-fatal.
 
-        // Apply forced dark icon if configured
-        SyncManager.shared.updateAppIcon()
+        safeInit("Dock icon visibility") { updateDockIconVisibility() }
+        safeInit("App icon") { SyncManager.shared.updateAppIcon() }
+        safeInit("Notification permission") { NotificationService.shared.requestPermission() }
+        safeInit("Vault bookmark") { _ = SyncManager.shared.resolveVaultBookmark() }
+        safeInit("MTN bookmark") { _ = TaskNotesSource.resolveMtnBookmark() }
+        safeInit("Global hotkey") { SyncManager.shared.updateHotKey() }
+        safeInit("File watcher") { SyncManager.shared.updateFileWatcher() }
+        safeInit("Auto-updater") { _ = UpdaterService.shared }
 
-        // Request notification permission
-        NotificationService.shared.requestPermission()
-
-        // Resolve vault bookmark for sandbox access
-        _ = SyncManager.shared.resolveVaultBookmark()
-
-        // Resolve mtn binary bookmark for TaskNotes CLI sandbox access
-        _ = TaskNotesSource.resolveMtnBookmark()
-
-        // Register global hotkey if enabled
-        SyncManager.shared.updateHotKey()
-
-        // Start file watcher if enabled
-        SyncManager.shared.updateFileWatcher()
-
-        // Initialize auto-updater so it starts checking on launch (#23)
-        _ = UpdaterService.shared
-
-        // Request Reminders access on launch
+        // Request destination access on launch
         Task {
             await SyncManager.shared.requestDestinationAccess()
         }
+    }
+
+    /// Run an initialization step safely. If the block crashes the process, at least the
+    /// debug log will show which step was attempted last.
+    private func safeInit(_ label: String, _ block: () -> Void) {
+        debugLog("[AppDelegate] Starting: \(label)")
+        block()
+        debugLog("[AppDelegate] Completed: \(label)")
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
