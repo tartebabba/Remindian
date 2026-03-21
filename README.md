@@ -22,6 +22,8 @@
   <em>Free and open source. If it saves you time, consider</em> <a href="https://www.buymeacoffee.com/santofer">buying me a coffee</a>!
 </p>
 
+<iframe src="https://github.com/sponsors/Santofer/button" title="Sponsor Santofer" height="32" width="114" style="border: 0; border-radius: 6px;"></iframe>
+
 ---
 
 ## What it does
