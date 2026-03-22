@@ -21,31 +21,19 @@ class Things3Destination: TaskDestination {
     /// The auth token from Things > Settings > General > Enable Things URLs > Manage
     var authToken: String = ""
 
-    /// Expand hierarchical tags so parent tags are included.
-    /// Things 3 requires parent tags to exist before child tags can be nested.
-    /// e.g. "person/name" → ["person", "person/name"]
-    private func expandHierarchicalTags(_ tags: [String]) -> [String] {
-        var expanded: [String] = []
+    /// Clean tags for Things 3 — strip # prefix, preserve hierarchy as-is.
+    /// Things 3 resolves hierarchical tags (e.g. "person/name") natively
+    /// when they already exist in the tag tree. Sending parent tags separately
+    /// would cause the task to be tagged with both "person" AND "person/name".
+    private func cleanTagsForThings(_ tags: [String]) -> [String] {
+        var cleaned: [String] = []
         var seen = Set<String>()
         for tag in tags {
             let stripped = tag.hasPrefix("#") ? String(tag.dropFirst()) : tag
-            if stripped.contains("/") {
-                // Add all ancestor tags first
-                let parts = stripped.split(separator: "/")
-                var path = ""
-                for part in parts {
-                    path = path.isEmpty ? String(part) : "\(path)/\(part)"
-                    if seen.insert(path).inserted {
-                        expanded.append(path)
-                    }
-                }
-            } else {
-                if seen.insert(stripped).inserted {
-                    expanded.append(stripped)
-                }
-            }
+            guard !stripped.isEmpty, seen.insert(stripped).inserted else { continue }
+            cleaned.append(stripped)
         }
-        return expanded
+        return cleaned
     }
 
     // Cache for performance
@@ -221,7 +209,7 @@ class Things3Destination: TaskDestination {
 
         // Set tags via URL scheme if auth token is available (AppleScript can't set tags on creation)
         if !task.tags.isEmpty && !authToken.isEmpty {
-            let tagNames = expandHierarchicalTags(task.tags)
+            let tagNames = cleanTagsForThings(task.tags)
             try updateTaskViaURLScheme(params: [
                 "id": taskId,
                 "auth-token": authToken,
@@ -263,9 +251,9 @@ class Things3Destination: TaskDestination {
         }
 
         // Sync tags (#32 — tag changes were not being sent to Things 3)
-        // Expand hierarchical tags so parent tags are created first (#45)
+        // Clean tags for Things 3 — strip # prefix, preserve hierarchy (#45)
         if !task.tags.isEmpty {
-            let tagNames = expandHierarchicalTags(task.tags)
+            let tagNames = cleanTagsForThings(task.tags)
             params["tags"] = tagNames.joined(separator: ",")
         }
 

@@ -4,6 +4,13 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.2.2 (March 2026)
+
+### Bug Fixes
+- **Fixed Things 3 hierarchical tags** — Tags like `person/name` were being expanded to both `person` and `person/name`, causing tasks to get tagged with the parent tag as a standalone tag. Now sends only the full tag path and lets Things 3 resolve the hierarchy natively
+
+---
+
 ## v4.2.1 (March 2026)
 
 ### Bug Fixes
