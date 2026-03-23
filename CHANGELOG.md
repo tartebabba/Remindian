@@ -4,6 +4,19 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.3.1 (March 2026)
+
+### New Features
+- **Obsidian link in Things 3** — Tasks synced to Things 3 now include a clickable `obsidian://` link in the notes field, just like Apple Reminders. Click it to jump straight to the source file in Obsidian
+- **Task Notes body synced** — The markdown body content of TaskNotes files (below the YAML frontmatter) is now included as the task notes in the destination
+
+### Bug Fixes
+- **Fixed MTN exit 126 in sandbox** — The macOS sandbox blocks CLI execution even with `chmod +x`. The app now automatically falls back to "Direct Files" mode when mtn CLI fails, which reads/writes task files directly without needing the mtn binary
+- **10x faster Things 3 sync** — Task creation now uses batch AppleScript (up to 20 tasks per call) instead of one-at-a-time. URL scheme throttle reduced from 150ms to 50ms. 100 tasks should now sync in under a minute instead of 7-12 minutes
+- **Fixed version display** — Xcode project build settings (`MARKETING_VERSION`) now stay in sync with `Info.plist`
+
+---
+
 ## v4.3.0 (March 2026)
 
 ### Bug Fixes

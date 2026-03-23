@@ -765,6 +765,7 @@ class SyncEngine {
             }
 
             debugLog("[SyncEngine] Processed \(processedObsidianIds.count) existing mappings. New tasks to process: \(obsidianMap.count - processedObsidianIds.count). Unmatched reminders available for reconnect: \(remindersMap.count)")
+
             for (obsidianId, task) in obsidianMap {
                 if processedObsidianIds.contains(obsidianId) {
                     continue

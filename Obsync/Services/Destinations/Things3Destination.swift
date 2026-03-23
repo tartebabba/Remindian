@@ -44,6 +44,29 @@ class Things3Destination: TaskDestination {
     private var cachedLists: [String] = []
     private var lastListRefresh: Date?
 
+    /// Build obsidian:// deep link for a task, to embed in Things 3 notes.
+    private func buildObsidianLink(task: SyncTask, config: SyncConfiguration) -> String? {
+        guard config.addTaskLinkToReminders,
+              let source = task.obsidianSource,
+              !config.vaultPath.isEmpty else { return nil }
+        let vaultName = URL(fileURLWithPath: config.vaultPath).lastPathComponent
+        let encodedVault = vaultName.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? vaultName
+        let encodedFile = source.filePath.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? source.filePath
+        return "obsidian://open?vault=\(encodedVault)&file=\(encodedFile)"
+    }
+
+    /// Prepend obsidian:// link to notes if configured.
+    private func notesWithObsidianLink(task: SyncTask, config: SyncConfiguration) -> String {
+        let baseNotes = task.notes ?? ""
+        guard let link = buildObsidianLink(task: task, config: config) else {
+            return baseNotes
+        }
+        if baseNotes.isEmpty {
+            return link
+        }
+        return link + "\n\n" + baseNotes
+    }
+
     // MARK: - Authorization
 
     func requestAccess() async throws -> Bool {
@@ -151,7 +174,9 @@ class Things3Destination: TaskDestination {
             .replacingOccurrences(of: "\u{1F4C2} ", with: "")
 
         let escapedTitle = task.title.replacingOccurrences(of: "\"", with: "\\\"")
-        let escapedNotes = (task.notes ?? "").replacingOccurrences(of: "\"", with: "\\\"")
+        let fullNotes = notesWithObsidianLink(task: task, config: config)
+        let escapedNotes = fullNotes.replacingOccurrences(of: "\"", with: "\\\"")
+            .replacingOccurrences(of: "\n", with: "\\n")
 
         // Build properties — due date is set via AppleScript date component construction
         // to avoid locale-dependent date literal parsing issues
@@ -225,6 +250,93 @@ class Things3Destination: TaskDestination {
         return taskId
     }
 
+    /// Batch-create multiple tasks in a single AppleScript call for performance.
+    /// Returns an array of Things 3 task IDs in the same order as the input.
+    func createTasksBatch(tasks: [(task: SyncTask, listName: String)], config: SyncConfiguration) async throws -> [String] {
+        guard !tasks.isEmpty else { return [] }
+
+        // Build a single AppleScript that creates all tasks and returns their IDs
+        var scriptLines = [
+            "tell application id \"com.culturedcode.ThingsMac\"",
+            "    set idList to {}"
+        ]
+
+        for (task, listName) in tasks {
+            let escapedTitle = task.title.replacingOccurrences(of: "\"", with: "\\\"")
+            let fullNotes = notesWithObsidianLink(task: task, config: config)
+            let escapedNotes = fullNotes.replacingOccurrences(of: "\"", with: "\\\"")
+                .replacingOccurrences(of: "\n", with: "\\n")
+
+            var properties = "name:\"\(escapedTitle)\""
+            if !escapedNotes.isEmpty {
+                properties += ", notes:\"\(escapedNotes)\""
+            }
+            if task.isCompleted {
+                properties += ", status:completed"
+            }
+
+            scriptLines.append("    set newTodo to make new to do with properties {\(properties)}")
+
+            // Move to project if needed
+            let cleanList = listName
+                .replacingOccurrences(of: "\u{1F4C1} ", with: "")
+                .replacingOccurrences(of: "\u{1F4C2} ", with: "")
+            if listName.hasPrefix("\u{1F4C1} ") {
+                let escapedProject = cleanList.replacingOccurrences(of: "\"", with: "\\\"")
+                scriptLines.append("    move newTodo to project \"\(escapedProject)\"")
+            }
+
+            // Set due date using locale-independent date components
+            if let dueDate = task.dueDate {
+                let cal = Calendar.current
+                let y = cal.component(.year, from: dueDate)
+                let m = cal.component(.month, from: dueDate)
+                let d = cal.component(.day, from: dueDate)
+                scriptLines.append("    set dueD to current date")
+                scriptLines.append("    set year of dueD to \(y)")
+                scriptLines.append("    set month of dueD to \(m)")
+                scriptLines.append("    set day of dueD to \(d)")
+                scriptLines.append("    set time of dueD to 0")
+                scriptLines.append("    set due date of newTodo to dueD")
+            }
+
+            scriptLines.append("    set end of idList to id of newTodo")
+        }
+
+        scriptLines.append("    set AppleScript's text item delimiters to \"|||\"")
+        scriptLines.append("    return idList as string")
+        scriptLines.append("end tell")
+
+        let scriptSource = scriptLines.joined(separator: "\n")
+        let (result, error) = executeAppleScriptWithRetry(source: scriptSource)
+        guard let result = result,
+              let resultString = result.stringValue, !resultString.isEmpty else {
+            let message = (error?[NSAppleScript.errorMessage] as? String) ?? "Unknown error"
+            throw Things3Error.appleScriptError("Batch create failed: \(message)")
+        }
+
+        let ids = resultString.components(separatedBy: "|||")
+        guard ids.count == tasks.count else {
+            throw Things3Error.appleScriptError("Batch create returned \(ids.count) IDs for \(tasks.count) tasks")
+        }
+
+        // Set tags via URL scheme for tasks that have them (needs auth token)
+        if !authToken.isEmpty {
+            for (index, (task, _)) in tasks.enumerated() where !task.tags.isEmpty {
+                let tagNames = cleanTagsForThings(task.tags)
+                try updateTaskViaURLScheme(params: [
+                    "id": ids[index],
+                    "auth-token": authToken,
+                    "tags": tagNames.joined(separator: ",")
+                ])
+                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms throttle between URL calls
+            }
+        }
+
+        debugLog("[Things3] Batch created \(tasks.count) tasks")
+        return ids
+    }
+
     func updateTask(withId id: String, from task: SyncTask, config: SyncConfiguration) async throws {
         guard !authToken.isEmpty else {
             // Don't throw — allow sync to continue for creation-only workflows.
@@ -250,8 +362,9 @@ class Things3Destination: TaskDestination {
             params["completed"] = "true"
         }
 
-        if let notes = task.notes {
-            params["notes"] = notes
+        let fullNotes = notesWithObsidianLink(task: task, config: config)
+        if !fullNotes.isEmpty {
+            params["notes"] = fullNotes
         }
 
         // Sync tags (#32 — tag changes were not being sent to Things 3)
@@ -278,7 +391,7 @@ class Things3Destination: TaskDestination {
 
         // Throttle: give Things 3 time to process the URL scheme call
         // before firing the next one — rapid-fire calls overwhelm it
-        try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+        try? await Task.sleep(nanoseconds: 50_000_000) // 50ms
     }
 
     func moveTask(withId id: String, toList listName: String) async throws {

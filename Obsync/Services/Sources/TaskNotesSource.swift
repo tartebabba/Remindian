@@ -241,7 +241,18 @@ class TaskNotesSource: TaskSource {
     func scanTasks(config: SyncConfiguration) throws -> [SyncTask] {
         switch integrationMode {
         case .cli:
-            return try scanTasksViaCli(config: config)
+            do {
+                return try scanTasksViaCli(config: config)
+            } catch let error as TaskNotesError {
+                // Auto-fallback: if CLI fails with sandbox permission error (exit 126/127),
+                // switch to file-based mode which doesn't need external binaries
+                if case .cliError(let msg) = error, (msg.contains("code 126") || msg.contains("code 127") || msg.contains("not executable") || msg.contains("not found")) {
+                    debugLog("[TaskNotes] CLI not accessible in sandbox — auto-switching to direct file mode")
+                    integrationMode = .fileBased
+                    return try scanTasksFromFiles(config: config)
+                }
+                throw error
+            }
         case .fileBased:
             return try scanTasksFromFiles(config: config)
         case .httpApi:
@@ -700,6 +711,8 @@ class TaskNotesSource: TaskSource {
         var inFrontmatter = false
         var frontmatterEnded = false
         var lastArrayKey: String?  // Track which key a YAML array item belongs to
+        var bodyLines: [String] = []  // Content below frontmatter (notes body)
+        var foundHeading = false
 
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -796,10 +809,17 @@ class TaskNotesSource: TaskSource {
             }
 
             // Parse title from first heading after frontmatter
-            if frontmatterEnded && trimmed.hasPrefix("# ") {
+            if frontmatterEnded && trimmed.hasPrefix("# ") && !foundHeading {
                 title = String(trimmed.dropFirst(2))
+                foundHeading = true
+            } else if frontmatterEnded && foundHeading {
+                // Collect body lines after the heading (task notes content)
+                bodyLines.append(line)
             }
         }
+
+        // Build notes from body content (trimmed)
+        let notesBody = bodyLines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
 
         let isCompleted = isStatusCompleted(status)
 
@@ -830,6 +850,7 @@ class TaskNotesSource: TaskSource {
             completedDate: completedDate,
             tags: tags,
             targetList: targetList,
+            notes: notesBody.isEmpty ? nil : notesBody,
             obsidianSource: SyncTask.ObsidianSource(
                 filePath: relativePath,
                 lineNumber: 1,
