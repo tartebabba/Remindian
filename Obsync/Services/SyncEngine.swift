@@ -766,6 +766,8 @@ class SyncEngine {
 
             debugLog("[SyncEngine] Processed \(processedObsidianIds.count) existing mappings. New tasks to process: \(obsidianMap.count - processedObsidianIds.count). Unmatched reminders available for reconnect: \(remindersMap.count)")
 
+            var newTasksToCreate: [(obsidianId: String, task: SyncTask, listName: String)] = []
+
             for (obsidianId, task) in obsidianMap {
                 if processedObsidianIds.contains(obsidianId) {
                     continue
@@ -861,39 +863,15 @@ class SyncEngine {
                     continue
                 }
 
-                do {
-                    let listName = config.resolveTargetList(tag: task.targetList, filePath: task.obsidianSource?.filePath)
-                    debugLog("[SyncEngine] Creating: \"\(task.title)\" → list \"\(listName)\" (tag: \(task.targetList ?? "none"), client: \(task.clientName ?? "none"))")
-                    if !config.dryRunMode {
-                        let reminderId = try await destination.createTask(
-                            from: task,
-                            inList: listName,
-                            config: config
-                        )
-                        let hash = SyncState.generateTaskHash(task)
-                        syncState.addOrUpdateMapping(
-                            obsidianId: obsidianId,
-                            remindersId: reminderId,
-                            obsidianHash: hash,
-                            remindersHash: hash
-                        )
-                    }
-                    result.created += 1
-                    result.details.append(SyncLogDetail(
-                        action: .created,
-                        taskTitle: task.title,
-                        filePath: task.obsidianSource?.filePath,
-                        errorMessage: nil
-                    ))
-                } catch {
-                    result.errors.append(error)
-                    result.details.append(SyncLogDetail(
-                        action: .error,
-                        taskTitle: task.title,
-                        filePath: task.obsidianSource?.filePath,
-                        errorMessage: error.localizedDescription
-                    ))
-                }
+                // Queue for batch creation
+                let listName = config.resolveTargetList(tag: task.targetList, filePath: task.obsidianSource?.filePath)
+                debugLog("[SyncEngine] Queuing: \"\(task.title)\" → list \"\(listName)\"")
+                newTasksToCreate.append((obsidianId: obsidianId, task: task, listName: listName))
+            }
+
+            // Batch-create all new tasks (uses batch AppleScript for Things 3)
+            if !newTasksToCreate.isEmpty {
+                await createNewTasks(tasks: newTasksToCreate, config: config, result: &result)
             }
 
             // Step 6: New task writeback — Reminders → Obsidian Inbox
@@ -961,6 +939,108 @@ class SyncEngine {
 
         debugLog("[SyncEngine] Sync complete: \(result.summary)")
         return result
+    }
+
+    // MARK: - Batch Task Creation
+
+    /// Create multiple tasks in the destination, using batch AppleScript for Things 3.
+    /// Extracted from performSync to avoid Swift compiler SIL ownership bug in Release mode.
+    private func createNewTasks(
+        tasks: [(obsidianId: String, task: SyncTask, listName: String)],
+        config: SyncConfiguration,
+        result: inout SyncResult
+    ) async {
+        guard !tasks.isEmpty else { return }
+
+        if config.dryRunMode {
+            for item in tasks {
+                result.created += 1
+                result.details.append(SyncLogDetail(
+                    action: .created,
+                    taskTitle: item.task.title,
+                    filePath: item.task.obsidianSource?.filePath,
+                    errorMessage: nil
+                ))
+            }
+            return
+        }
+
+        // Try batch creation for Things 3
+        if let things3 = destination as? Things3Destination {
+            let batchSize = 20
+            for batchStart in stride(from: 0, to: tasks.count, by: batchSize) {
+                if isCancelled { break }
+                let batchEnd = min(batchStart + batchSize, tasks.count)
+                let batch = Array(tasks[batchStart..<batchEnd])
+                let batchInput = batch.map { (task: $0.task, listName: $0.listName) }
+
+                do {
+                    let ids = try await things3.createTasksBatch(tasks: batchInput, config: config)
+                    for (i, item) in batch.enumerated() {
+                        let hash = SyncState.generateTaskHash(item.task)
+                        syncState.addOrUpdateMapping(
+                            obsidianId: item.obsidianId,
+                            remindersId: ids[i],
+                            obsidianHash: hash,
+                            remindersHash: hash
+                        )
+                        result.created += 1
+                        result.details.append(SyncLogDetail(
+                            action: .created,
+                            taskTitle: item.task.title,
+                            filePath: item.task.obsidianSource?.filePath,
+                            errorMessage: nil
+                        ))
+                    }
+                    debugLog("[SyncEngine] Batch created \(batch.count) tasks in Things 3")
+                } catch {
+                    debugLog("[SyncEngine] Batch create failed, falling back to individual: \(error.localizedDescription)")
+                    await createTasksSequentially(tasks: batch, config: config, result: &result)
+                }
+            }
+        } else {
+            await createTasksSequentially(tasks: tasks, config: config, result: &result)
+        }
+    }
+
+    /// Create tasks one at a time (fallback for non-Things 3 destinations or batch failure).
+    private func createTasksSequentially(
+        tasks: [(obsidianId: String, task: SyncTask, listName: String)],
+        config: SyncConfiguration,
+        result: inout SyncResult
+    ) async {
+        for item in tasks {
+            if isCancelled { break }
+            do {
+                let reminderId = try await destination.createTask(
+                    from: item.task,
+                    inList: item.listName,
+                    config: config
+                )
+                let hash = SyncState.generateTaskHash(item.task)
+                syncState.addOrUpdateMapping(
+                    obsidianId: item.obsidianId,
+                    remindersId: reminderId,
+                    obsidianHash: hash,
+                    remindersHash: hash
+                )
+                result.created += 1
+                result.details.append(SyncLogDetail(
+                    action: .created,
+                    taskTitle: item.task.title,
+                    filePath: item.task.obsidianSource?.filePath,
+                    errorMessage: nil
+                ))
+            } catch {
+                result.errors.append(error)
+                result.details.append(SyncLogDetail(
+                    action: .error,
+                    taskTitle: item.task.title,
+                    filePath: item.task.obsidianSource?.filePath,
+                    errorMessage: error.localizedDescription
+                ))
+            }
+        }
     }
 
     // MARK: - Conflict Resolution (simplified - Obsidian always wins)
