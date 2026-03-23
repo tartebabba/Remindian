@@ -3,7 +3,7 @@ import SwiftUI
 struct AboutView: View {
     private let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "3.2.0"
     private let buildNumber = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "3"
-    private let releaseDate = "February 2026"
+    private let releaseDate = "March 2026"
     private let githubURL = "https://github.com/Santofer/Remindian"
     private let buyMeCoffeeURL = "https://buymeacoffee.com/santofer"
 

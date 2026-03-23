@@ -4,6 +4,17 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v4.3.0 (March 2026)
+
+### Bug Fixes
+- **Fixed Things 3 hierarchical tags (again)** — Tags like `person/name` now send only the leaf name (`name`) via URL scheme. Things 3 resolves the hierarchy natively; sending the full path caused percent-encoding (`person%2Fname`) which didn't match existing tags
+- **Improved Things 3 sync speed** — Added 150ms throttle between URL scheme calls to prevent overwhelming Things 3 with rapid-fire updates. Reduced retry delay from 0.5s to 0.3s
+- **Fixed first-launch auto-sync** — Onboarding no longer triggers an immediate sync. Users with large vaults were getting hundreds of tasks created in their destination on first launch before reviewing settings
+- **Better MTN error messages** — Exit code 126 ("not executable") now shows a clear fix: `chmod +x /path/to/mtn`. Also pre-checks binary permissions before attempting to run
+- **Updated About view** — Release date now shows March 2026
+
+---
+
 ## v4.2.2 (March 2026)
 
 ### Bug Fixes

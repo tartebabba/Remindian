@@ -459,12 +459,9 @@ struct OnboardingView: View {
         UserDefaults.standard.set(true, forKey: "hasCompletedOnboarding")
         syncManager.config.save()
 
-        // Trigger first sync if both vault and reminders are configured
-        if !syncManager.config.vaultPath.isEmpty && syncManager.hasDestinationAccess {
-            Task {
-                await syncManager.performSync()
-            }
-        }
+        // Don't auto-sync on first launch — let the user review settings first.
+        // A large vault could create hundreds of tasks in the destination unexpectedly.
+        // The user can trigger sync manually or it will run on the next auto-sync interval.
 
         isPresented = false
     }

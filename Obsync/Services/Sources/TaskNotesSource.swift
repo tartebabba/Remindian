@@ -171,7 +171,14 @@ class TaskNotesSource: TaskSource {
         let mtnBinary: String
 
         if let directPath = effectiveMtnPath {
-            // Use the direct path if we have sandbox access
+            // Pre-flight: check if the binary exists and is executable
+            if !FileManager.default.isExecutableFile(atPath: directPath) {
+                if FileManager.default.fileExists(atPath: directPath) {
+                    throw TaskNotesError.cliError("mtn found at \(directPath) but is not executable. Fix with: chmod +x \(directPath)")
+                } else {
+                    throw TaskNotesError.cliError("mtn not found at \(directPath). Install with: npm install -g mtn")
+                }
+            }
             mtnBinary = directPath
         } else {
             // Fall back to just "mtn" and rely on the shell's PATH
@@ -214,7 +221,16 @@ class TaskNotesSource: TaskSource {
 
         if process.terminationStatus != 0 {
             debugLog("[TaskNotes] mtn error (exit \(process.terminationStatus)): \(errorOutput)")
-            throw TaskNotesError.cliError("mtn exited with code \(process.terminationStatus): \(errorOutput)")
+            let hint: String
+            switch process.terminationStatus {
+            case 126:
+                hint = "mtn is not executable. Try: chmod +x \(mtnBinary)"
+            case 127:
+                hint = "mtn not found. Install with: npm install -g mtn"
+            default:
+                hint = errorOutput
+            }
+            throw TaskNotesError.cliError("mtn exited with code \(process.terminationStatus): \(hint)")
         }
 
         return output

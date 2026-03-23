@@ -21,17 +21,21 @@ class Things3Destination: TaskDestination {
     /// The auth token from Things > Settings > General > Enable Things URLs > Manage
     var authToken: String = ""
 
-    /// Clean tags for Things 3 — strip # prefix, preserve hierarchy as-is.
-    /// Things 3 resolves hierarchical tags (e.g. "person/name") natively
-    /// when they already exist in the tag tree. Sending parent tags separately
-    /// would cause the task to be tagged with both "person" AND "person/name".
+    /// Clean tags for Things 3 — strip # prefix, extract leaf from hierarchy.
+    /// Things 3 URL scheme requires tags to match existing tag titles exactly.
+    /// For hierarchical tags like "person/name", the URL scheme needs just the
+    /// leaf component ("name") — Things 3 resolves the hierarchy natively.
+    /// Sending the full path gets percent-encoded (person%2Fname) and won't match.
     private func cleanTagsForThings(_ tags: [String]) -> [String] {
         var cleaned: [String] = []
         var seen = Set<String>()
         for tag in tags {
             let stripped = tag.hasPrefix("#") ? String(tag.dropFirst()) : tag
-            guard !stripped.isEmpty, seen.insert(stripped).inserted else { continue }
-            cleaned.append(stripped)
+            guard !stripped.isEmpty else { continue }
+            // Extract leaf tag name for hierarchical tags (e.g. "person/name" → "name")
+            let leaf = stripped.components(separatedBy: "/").last ?? stripped
+            guard !leaf.isEmpty, seen.insert(leaf).inserted else { continue }
+            cleaned.append(leaf)
         }
         return cleaned
     }
@@ -271,6 +275,10 @@ class Things3Destination: TaskDestination {
         if !success {
             throw Things3Error.urlSchemeNotHandled
         }
+
+        // Throttle: give Things 3 time to process the URL scheme call
+        // before firing the next one — rapid-fire calls overwhelm it
+        try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
     }
 
     func moveTask(withId id: String, toList listName: String) async throws {
@@ -343,7 +351,7 @@ class Things3Destination: TaskDestination {
             debugLog("[Things3] AppleScript failed (attempt 1): \(message)")
 
             // Retry with an explicit launch + short delay in case Things wasn't ready
-            Thread.sleep(forTimeInterval: 0.5)
+            Thread.sleep(forTimeInterval: 0.3)
             let retrySource = source.replacingOccurrences(
                 of: "tell application id \"com.culturedcode.ThingsMac\"",
                 with: "tell application id \"com.culturedcode.ThingsMac\"\n                launch\n                delay 0.3"
