@@ -4,6 +4,22 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.2.0 (March 2026)
+
+### Design Overhaul — Liquid Glass (macOS Tahoe)
+- **NavigationSplitView dashboard** — On macOS 26+, the main window uses a native sidebar/detail split with automatic floating glass sidebar, replacing the legacy HSplitView
+- **Glass toolbar** — Sync button and status move into the native toolbar, which gets automatic Liquid Glass treatment on Tahoe. Traffic lights (close/minimize/maximize) integrate naturally into the content area
+- **Transparent titlebar** — All programmatically created windows (main, settings, about) use `titlebarAppearsTransparent` + `fullSizeContentView` on macOS 26+ for seamless glass
+- **Glass sidebar sections** — Sync Status and Configuration panels use `.glassEffect(.regular)` directly on macOS 26+ instead of wrapping the entire view in a glass blob
+- **Full backward compatibility** — macOS 13-15 users see the exact same UI as before. All glass is conditionally applied with `@available(macOS 26, *)`
+
+### UI Improvements (all macOS versions)
+- **Settings window size** — Default 750×700, minimum 650×550 (up from 550×580)
+- **Settings scroll fix** — List Mappings tab now scrollable; no more content clipping
+- **Flexible field widths** — Mapping input fields flex with window resize
+
+---
+
 ## v5.1.0 (March 2026)
 
 ### UI Improvements

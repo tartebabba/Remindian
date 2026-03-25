@@ -33,7 +33,6 @@ struct SettingsView: View {
         }
         .frame(minWidth: 700, idealWidth: 800, minHeight: 650, idealHeight: 850)
         .padding()
-        .liquidGlass(cornerRadius: 16)
     }
 }
 
@@ -1033,9 +1032,27 @@ struct LiquidGlassModifier: ViewModifier {
     }
 }
 
+struct LiquidGlassClearModifier: ViewModifier {
+    var cornerRadius: CGFloat = 12
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.glassEffect(.clear, in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            content
+        }
+    }
+}
+
 extension View {
+    /// Apply Liquid Glass with `.regular` style (opaque-ish, for navigation/chrome).
     func liquidGlass(cornerRadius: CGFloat = 12) -> some View {
         modifier(LiquidGlassModifier(cornerRadius: cornerRadius))
+    }
+
+    /// Apply Liquid Glass with `.clear` style (transparent, for media-rich backgrounds).
+    func liquidGlassClear(cornerRadius: CGFloat = 12) -> some View {
+        modifier(LiquidGlassClearModifier(cornerRadius: cornerRadius))
     }
 }
 

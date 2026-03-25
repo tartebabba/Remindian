@@ -200,6 +200,11 @@ struct MenuBarView: View {
         window.title = "Remindian"
         window.setContentSize(NSSize(width: 600, height: 500))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        if #available(macOS 26, *) {
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+        }
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
@@ -221,6 +226,11 @@ struct MenuBarView: View {
         window.title = "About Remindian"
         window.setContentSize(NSSize(width: 320, height: 480))
         window.styleMask = [.titled, .closable]
+        if #available(macOS 26, *) {
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+        }
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
@@ -240,9 +250,14 @@ struct MenuBarView: View {
         let window = NSWindow(contentViewController: hostingController)
         window.identifier = NSUserInterfaceItemIdentifier("settings-window")
         window.title = "Settings"
-        window.setContentSize(NSSize(width: 550, height: 580))
+        window.setContentSize(NSSize(width: 750, height: 700))
         window.styleMask = [.titled, .closable, .resizable]
-        window.minSize = NSSize(width: 500, height: 450)
+        window.minSize = NSSize(width: 650, height: 550)
+        if #available(macOS 26, *) {
+            window.titlebarAppearsTransparent = true
+            window.titleVisibility = .hidden
+            window.styleMask.insert(.fullSizeContentView)
+        }
         window.center()
         window.makeKeyAndOrderFront(nil)
     }

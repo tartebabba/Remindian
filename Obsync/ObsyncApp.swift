@@ -59,6 +59,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Task {
             await SyncManager.shared.requestDestinationAccess()
         }
+
+        // macOS 26+ (Tahoe): Configure main window for Liquid Glass
+        if #available(macOS 26, *) {
+            safeInit("Liquid Glass window") {
+                DispatchQueue.main.async {
+                    for window in NSApp.windows {
+                        window.titlebarAppearsTransparent = true
+                        window.titleVisibility = .hidden
+                        window.styleMask.insert(.fullSizeContentView)
+                    }
+                }
+            }
+        }
     }
 
     /// Run an initialization step safely. If the block crashes the process, at least the

@@ -6,33 +6,256 @@ struct ContentView: View {
     @State private var showOnboarding = !UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
 
     var body: some View {
+        mainContent
+            .frame(minWidth: 600, minHeight: 500)
+            .alert("Error", isPresented: $syncManager.showError) {
+                Button("OK") { }
+            } message: {
+                Text(syncManager.errorMessage)
+            }
+            .sheet(isPresented: $showOnboarding) {
+                OnboardingView(isPresented: $showOnboarding)
+                    .environmentObject(syncManager)
+            }
+    }
+
+    @ViewBuilder
+    private var mainContent: some View {
+        if !syncManager.hasDestinationAccess {
+            legacyShell { PermissionRequestView() }
+        } else if syncManager.config.vaultPath.isEmpty {
+            legacyShell { SetupWizardView() }
+        } else {
+            dashboardView
+        }
+    }
+
+    /// Wraps non-dashboard views with the header (always legacy style for these)
+    private func legacyShell<V: View>(@ViewBuilder content: () -> V) -> some View {
         VStack(spacing: 0) {
             HeaderView()
-
             Divider()
+            content()
+        }
+    }
 
-            if !syncManager.hasDestinationAccess {
-                PermissionRequestView()
-            } else if syncManager.config.vaultPath.isEmpty {
-                SetupWizardView()
-            } else {
+    @ViewBuilder
+    private var dashboardView: some View {
+        if #available(macOS 26, *) {
+            ModernDashboardView()
+        } else {
+            VStack(spacing: 0) {
+                HeaderView()
+                Divider()
                 MainDashboardView()
             }
-        }
-        .frame(minWidth: 600, minHeight: 500)
-        .alert("Error", isPresented: $syncManager.showError) {
-            Button("OK") { }
-        } message: {
-            Text(syncManager.errorMessage)
-        }
-        .sheet(isPresented: $showOnboarding) {
-            OnboardingView(isPresented: $showOnboarding)
-                .environmentObject(syncManager)
         }
     }
 }
 
-// MARK: - Header
+// MARK: - Modern Dashboard (macOS 26+ / Liquid Glass)
+
+@available(macOS 26, *)
+struct ModernDashboardView: View {
+    @EnvironmentObject var syncManager: SyncManager
+    @State private var showResetConfirmation = false
+
+    var body: some View {
+        NavigationSplitView {
+            // Sidebar — gets automatic floating glass on Tahoe
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    syncStatusSection
+                    configurationSection
+
+                    Spacer(minLength: 20)
+
+                    actionButtons
+                }
+                .padding()
+            }
+            .navigationTitle("Remindian")
+            .frame(minWidth: 260, idealWidth: 280)
+        } detail: {
+            // Detail pane
+            TabView {
+                VStack {
+                    if !syncManager.pendingConflicts.isEmpty {
+                        ConflictsView()
+                    } else {
+                        EmptyConflictsView()
+                    }
+                }
+                .tabItem { Label("Conflicts", systemImage: "exclamationmark.triangle") }
+
+                SyncHistoryView()
+                    .tabItem { Label("History", systemImage: "clock") }
+            }
+            .padding()
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                syncToolbarButton
+            }
+            ToolbarItem(placement: .automatic) {
+                if syncManager.config.dryRunMode {
+                    Text("DRY RUN")
+                        .font(.caption2)
+                        .fontWeight(.bold)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.yellow.opacity(0.3))
+                        .cornerRadius(4)
+                }
+            }
+        }
+        .alert("Reset Sync State?", isPresented: $showResetConfirmation) {
+            Button("Cancel", role: .cancel) { }
+            Button("Reset", role: .destructive) {
+                syncManager.resetSyncState()
+            }
+        } message: {
+            Text("This will clear all sync mappings, history, and logs. The next sync will treat all tasks as new.")
+        }
+    }
+
+    // MARK: - Sidebar Sections
+
+    private var syncStatusSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Sync Status", systemImage: "arrow.triangle.2.circlepath")
+                .font(.headline)
+                .foregroundColor(.primary)
+
+            if let date = syncManager.lastSyncDate {
+                HStack {
+                    Text("Last sync:")
+                        .font(.callout)
+                    Spacer()
+                    Text(date, style: .relative)
+                        .font(.callout)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            if let result = syncManager.lastSyncResult {
+                HStack(spacing: 4) {
+                    StatBadge(value: result.created, label: "Created", color: .green)
+                    StatBadge(value: result.updated, label: "Updated", color: .blue)
+                    StatBadge(value: result.deleted, label: "Deleted", color: .red)
+                }
+
+                if result.completionsWrittenBack > 0 {
+                    Label("\(result.completionsWrittenBack) completed in Obsidian", systemImage: "checkmark.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.purple)
+                }
+
+                if result.metadataWrittenBack > 0 {
+                    Label("\(result.metadataWrittenBack) metadata written back", systemImage: "pencil.circle.fill")
+                        .font(.caption)
+                        .foregroundColor(.orange)
+                }
+
+                if !result.errors.isEmpty {
+                    Label("\(result.errors.count) errors occurred", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption)
+                        .foregroundColor(.red)
+                }
+            }
+
+            Text(syncManager.statusMessage)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+        .padding()
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var configurationSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label("Configuration", systemImage: "gearshape")
+                .font(.headline)
+                .foregroundColor(.primary)
+
+            ConfigRow(label: "Vault", value: URL(fileURLWithPath: syncManager.config.vaultPath).lastPathComponent)
+            ConfigRow(label: "Auto-sync", value: syncManager.config.enableAutoSync ? "Every \(syncManager.config.syncIntervalMinutes) min" : "Disabled")
+            ConfigRow(label: "Default list", value: syncManager.config.defaultList)
+            ConfigRow(label: "Mappings", value: "\(syncManager.config.listMappings.count) configured")
+            ConfigRow(label: "Writeback", value: syncManager.config.enableCompletionWriteback ? "Enabled" : "Disabled")
+        }
+        .padding()
+        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var actionButtons: some View {
+        VStack(spacing: 8) {
+            Button {
+                openSettingsWindow()
+            } label: {
+                Label("Open Settings", systemImage: "gearshape")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+
+            Button(role: .destructive) {
+                showResetConfirmation = true
+            } label: {
+                Label("Reset Sync State", systemImage: "arrow.counterclockwise")
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    @ViewBuilder
+    private var syncToolbarButton: some View {
+        if syncManager.isSyncing {
+            HStack(spacing: 8) {
+                ProgressView()
+                    .scaleEffect(0.7)
+                Button(action: { syncManager.cancelSync() }) {
+                    Label("Stop", systemImage: "stop.fill")
+                }
+                .tint(.red)
+            }
+        } else {
+            Button(action: {
+                Task { await syncManager.performSync() }
+            }) {
+                Label("Sync Now", systemImage: "arrow.triangle.2.circlepath")
+            }
+            .disabled(!syncManager.hasDestinationAccess || syncManager.config.vaultPath.isEmpty)
+        }
+    }
+
+    private func openSettingsWindow() {
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        for window in NSApplication.shared.windows {
+            if window.identifier?.rawValue == "settings-window" {
+                window.makeKeyAndOrderFront(nil)
+                return
+            }
+        }
+
+        let settingsView = SettingsView().environmentObject(SyncManager.shared)
+        let hostingController = NSHostingController(rootView: settingsView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.identifier = NSUserInterfaceItemIdentifier("settings-window")
+        window.title = "Settings"
+        window.setContentSize(NSSize(width: 750, height: 700))
+        window.styleMask = [.titled, .closable, .resizable]
+        window.minSize = NSSize(width: 650, height: 550)
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.styleMask.insert(.fullSizeContentView)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
+// MARK: - Header (Legacy — macOS 13-15)
 
 struct HeaderView: View {
     @EnvironmentObject var syncManager: SyncManager
@@ -264,7 +487,7 @@ struct SetupWizardView: View {
     }
 }
 
-// MARK: - Main Dashboard
+// MARK: - Main Dashboard (Legacy — macOS 13-15)
 
 struct MainDashboardView: View {
     @EnvironmentObject var syncManager: SyncManager
@@ -363,7 +586,6 @@ struct MainDashboardView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                .liquidGlass()
 
                 GroupBox("Configuration") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -375,7 +597,6 @@ struct MainDashboardView: View {
                     }
                     .padding(.vertical, 8)
                 }
-                .liquidGlass()
 
                 Spacer()
 
