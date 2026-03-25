@@ -123,7 +123,7 @@ struct MenuBarView: View {
             }
 
             menuButton("Settings...", icon: "gear") {
-                openSettings()
+                openMainWindow()
             }
 
             menuButton("About Remindian", icon: "info.circle") {

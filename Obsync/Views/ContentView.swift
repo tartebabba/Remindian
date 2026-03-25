@@ -111,8 +111,22 @@ struct ModernDashboardView: View {
             .navigationTitle("Remindian")
             .frame(minWidth: 260, idealWidth: 280)
         } detail: {
-            // Detail pane
+            // Detail pane — Settings + Activity in unified tabs
             TabView {
+                GeneralSettingsView()
+                    .tabItem { Label("General", systemImage: "gear") }
+
+                ListMappingsView()
+                    .tabItem { Label("Mappings", systemImage: "arrow.triangle.swap") }
+
+                if syncManager.config.taskSourceType == .taskNotes {
+                    TaskNotesSettingsView()
+                        .tabItem { Label("TaskNotes", systemImage: "doc.text") }
+                }
+
+                AdvancedSettingsView()
+                    .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+
                 VStack {
                     if !syncManager.pendingConflicts.isEmpty {
                         ConflictsView()
@@ -224,14 +238,6 @@ struct ModernDashboardView: View {
 
     private var actionButtons: some View {
         VStack(spacing: 8) {
-            Button {
-                openSettingsWindow()
-            } label: {
-                Label("Open Settings", systemImage: "gearshape")
-                    .frame(maxWidth: .infinity)
-            }
-            .buttonStyle(.bordered)
-
             Button(role: .destructive) {
                 showResetConfirmation = true
             } label: {
@@ -263,9 +269,6 @@ struct ModernDashboardView: View {
         }
     }
 
-    private func openSettingsWindow() {
-        openNativeSettingsWindow()
-    }
 }
 
 // MARK: - Header (Legacy — macOS 13-15)
@@ -506,10 +509,6 @@ struct MainDashboardView: View {
     @EnvironmentObject var syncManager: SyncManager
     @State private var showResetConfirmation = false
 
-    private func openSettingsWindow() {
-        openNativeSettingsWindow()
-    }
-
     var body: some View {
         HSplitView {
             // Left panel - Status & Quick Actions
@@ -596,11 +595,6 @@ struct MainDashboardView: View {
                 Spacer()
 
                 VStack(spacing: 8) {
-                    Button("Open Settings") {
-                        openSettingsWindow()
-                    }
-                    .frame(maxWidth: .infinity)
-
                     Button("Reset Sync State") {
                         showResetConfirmation = true
                     }
@@ -619,8 +613,22 @@ struct MainDashboardView: View {
                 Text("This will clear all sync mappings, history, and logs. The next sync will treat all tasks as new and re-create them in Reminders.")
             }
 
-            // Right panel - Tabbed: Conflicts / History
+            // Right panel — Settings + Activity in unified tabs
             TabView {
+                GeneralSettingsView()
+                    .tabItem { Label("General", systemImage: "gear") }
+
+                ListMappingsView()
+                    .tabItem { Label("Mappings", systemImage: "arrow.triangle.swap") }
+
+                if syncManager.config.taskSourceType == .taskNotes {
+                    TaskNotesSettingsView()
+                        .tabItem { Label("TaskNotes", systemImage: "doc.text") }
+                }
+
+                AdvancedSettingsView()
+                    .tabItem { Label("Advanced", systemImage: "slider.horizontal.3") }
+
                 VStack {
                     if !syncManager.pendingConflicts.isEmpty {
                         ConflictsView()

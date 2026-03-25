@@ -4,6 +4,16 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.4.0 (March 2026)
+
+### Unified Single-Window Experience
+- **Settings embedded in main window** — No more separate Settings window. General, Mappings, TaskNotes, and Advanced settings are now tabs alongside Conflicts and History in the main detail pane
+- **Liquid Glass tabs** — All tabs (settings + activity) share the same tab bar with Liquid Glass treatment on macOS Tahoe
+- **Fewer windows** — The app is now fully contained in a single window with sidebar + tabbed detail
+- **Menu bar "Settings..."** now opens the main window directly
+
+---
+
 ## v5.3.0 (March 2026)
 
 ### Native macOS Settings Window
