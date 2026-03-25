@@ -231,9 +231,38 @@ struct ModernDashboardView: View {
 
     private func openSettingsWindow() {
         NSApplication.shared.activate(ignoringOtherApps: true)
+
+        // Try to find an existing settings window first
+        for window in NSApplication.shared.windows {
+            if window.identifier?.rawValue == "settings-window" ||
+               window.title == "Settings" || window.title == "Preferences" {
+                window.makeKeyAndOrderFront(nil)
+                return
+            }
+        }
+
         // Open the native Settings scene (declared in ObsyncApp)
-        // This gives us the automatic toolbar-style icon tabs
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        // macOS 14+: showSettingsWindow:, macOS 13: showPreferencesWindow:
+        let opened: Bool
+        if #available(macOS 14, *) {
+            opened = NSApp.sendAction(Selector("showSettingsWindow:"), to: nil, from: nil)
+        } else {
+            opened = NSApp.sendAction(Selector("showPreferencesWindow:"), to: nil, from: nil)
+        }
+
+        // Fallback: create the window programmatically if the native scene didn't open
+        if !opened {
+            let settingsView = SettingsView().environmentObject(SyncManager.shared)
+            let hostingController = NSHostingController(rootView: settingsView)
+            let window = NSWindow(contentViewController: hostingController)
+            window.identifier = NSUserInterfaceItemIdentifier("settings-window")
+            window.title = "Settings"
+            window.setContentSize(NSSize(width: 750, height: 700))
+            window.styleMask = [.titled, .closable, .resizable]
+            window.minSize = NSSize(width: 650, height: 550)
+            window.center()
+            window.makeKeyAndOrderFront(nil)
+        }
     }
 }
 
