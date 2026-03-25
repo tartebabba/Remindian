@@ -210,7 +210,9 @@ class TodoistDestination: TaskDestination {
             throw TodoistError.invalidToken
         }
 
-        let url = URL(string: baseURL + path)!
+        guard let url = URL(string: baseURL + path) else {
+            throw TodoistError.apiError(0, "Invalid URL: \(baseURL + path)")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(cleanToken)", forHTTPHeaderField: "Authorization")

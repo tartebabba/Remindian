@@ -815,9 +815,10 @@ class ObsidianService {
 
         // "every weekday"
         if rest == "weekday" {
-            var next = calendar.date(byAdding: .day, value: 1, to: baseDate)!
+            guard var next = calendar.date(byAdding: .day, value: 1, to: baseDate) else { return nil }
             while calendar.isDateInWeekend(next) {
-                next = calendar.date(byAdding: .day, value: 1, to: next)!
+                guard let following = calendar.date(byAdding: .day, value: 1, to: next) else { return nil }
+                next = following
             }
             return next
         }
@@ -842,7 +843,8 @@ class ObsidianService {
                         return endOfMonth
                     }
                 }
-                candidate = calendar.date(byAdding: .month, value: interval, to: candidate)!
+                guard let nextCandidate = calendar.date(byAdding: .month, value: interval, to: candidate) else { return nil }
+                candidate = nextCandidate
             }
             return nil
         }
@@ -861,7 +863,8 @@ class ObsidianService {
                     return targetDate
                 }
             }
-            candidate = calendar.date(byAdding: .month, value: interval, to: candidate)!
+            guard let nextCandidate = calendar.date(byAdding: .month, value: interval, to: candidate) else { return nil }
+            candidate = nextCandidate
         }
 
         return nil

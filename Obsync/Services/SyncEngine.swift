@@ -171,6 +171,24 @@ class SyncEngine {
                     debugLog("[SyncEngine] Filtered out \(filtered) completed tasks older than \(config.maxCompletedTaskAgeDays) days")
                 }
             }
+            // Filter tasks with excluded tags (#47)
+            if !config.excludedTags.isEmpty {
+                let excludedLower = Set(config.excludedTags.map {
+                    $0.hasPrefix("#") ? String($0.dropFirst()).lowercased() : $0.lowercased()
+                })
+                let beforeCount = obsidianTasks.count
+                obsidianTasks = obsidianTasks.filter { task in
+                    let taskTagsLower = task.tags.map {
+                        $0.hasPrefix("#") ? String($0.dropFirst()).lowercased() : $0.lowercased()
+                    }
+                    return !taskTagsLower.contains(where: { excludedLower.contains($0) })
+                }
+                let filtered = beforeCount - obsidianTasks.count
+                if filtered > 0 {
+                    debugLog("[SyncEngine] Filtered \(filtered) tasks with excluded tags: \(config.excludedTags)")
+                }
+            }
+
             for (i, task) in obsidianTasks.prefix(5).enumerated() {
                 debugLog("[SyncEngine]   Task \(i): \"\(task.title)\" completed=\(task.isCompleted) file=\(task.obsidianSource?.filePath ?? "?")")
             }

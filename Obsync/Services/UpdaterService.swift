@@ -122,7 +122,9 @@ class UpdaterService: ObservableObject {
     // MARK: - Private Helpers
 
     private func fetchLatestRelease() async throws -> GitHubRelease {
-        let url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest")!
+        guard let url = URL(string: "https://api.github.com/repos/\(owner)/\(repo)/releases/latest") else {
+            throw UpdateError.apiError("Invalid GitHub API URL")
+        }
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github.v3+json", forHTTPHeaderField: "Accept")
         request.timeoutInterval = 15

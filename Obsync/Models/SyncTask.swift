@@ -473,7 +473,7 @@ extension SyncTask {
             title: reminder.title ?? "Untitled",
             isCompleted: reminder.isCompleted,
             priority: Priority.fromReminders(Int(reminder.priority)),
-            dueDate: reminder.dueDateComponents != nil ? Calendar.current.date(from: reminder.dueDateComponents!) : nil,
+            dueDate: reminder.dueDateComponents.flatMap { Calendar.current.date(from: $0) },
             startDate: startDate,
             completedDate: reminder.completionDate,
             tags: tags,

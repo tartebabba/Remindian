@@ -264,7 +264,7 @@ class TaskNotesSource: TaskSource {
         // TaskNotes uses file-based tasks, so the file path IS the unique ID
         guard let source = task.obsidianSource else {
             let components = [task.title, task.targetList ?? ""]
-            return "tasknotes|\(components.joined(separator: "|").data(using: .utf8)!.base64EncodedString())"
+            return "tasknotes|\(components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? "")"
         }
         return "tasknotes|\(source.filePath)"
     }
@@ -660,9 +660,19 @@ class TaskNotesSource: TaskSource {
         }
 
         var tasks: [SyncTask] = []
-        let files = try fileManager.contentsOfDirectory(at: dirURL, includingPropertiesForKeys: nil)
 
-        for fileURL in files where fileURL.pathExtension.lowercased() == "md" {
+        // Recurse into subdirectories so users can organize TaskNotes by project (#48)
+        guard let enumerator = fileManager.enumerator(
+            at: dirURL,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: [.skipsHiddenFiles]
+        ) else {
+            debugLog("[TaskNotes] Cannot enumerate: \(dirURL.path)")
+            return []
+        }
+
+        for case let fileURL as URL in enumerator {
+            guard fileURL.pathExtension.lowercased() == "md" else { continue }
             if let task = try? parseTaskNotesFile(fileURL, vaultPath: config.vaultPath) {
                 tasks.append(task)
             }

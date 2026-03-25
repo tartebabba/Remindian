@@ -187,6 +187,12 @@ class Things3Destination: TaskDestination {
         if task.isCompleted {
             properties += ", status:completed"
         }
+        // Embed tags directly in AppleScript properties (#speed)
+        if !task.tags.isEmpty {
+            let tagNames = cleanTagsForThings(task.tags)
+            let tagList = tagNames.map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ", ")
+            properties += ", tag names:{\(tagList)}"
+        }
 
         // Build a locale-independent due date setter using AppleScript date components
         var dueDateScript = ""
@@ -236,15 +242,7 @@ class Things3Destination: TaskDestination {
             throw Things3Error.appleScriptError("Failed to create task: \(message)")
         }
 
-        // Set tags via URL scheme if auth token is available (AppleScript can't set tags on creation)
-        if !task.tags.isEmpty && !authToken.isEmpty {
-            let tagNames = cleanTagsForThings(task.tags)
-            try updateTaskViaURLScheme(params: [
-                "id": taskId,
-                "auth-token": authToken,
-                "tags": tagNames.joined(separator: ",")
-            ])
-        }
+        // Tags are now embedded in AppleScript properties — no URL scheme needed for creation
 
         debugLog("[Things3] Created task \"\(task.title)\" with id=\(taskId)")
         return taskId
@@ -273,6 +271,13 @@ class Things3Destination: TaskDestination {
             }
             if task.isCompleted {
                 properties += ", status:completed"
+            }
+
+            // Embed tags directly in AppleScript to avoid per-task URL scheme calls (#speed)
+            if !task.tags.isEmpty {
+                let tagNames = cleanTagsForThings(task.tags)
+                let tagList = tagNames.map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ", ")
+                properties += ", tag names:{\(tagList)}"
             }
 
             scriptLines.append("    set newTodo to make new to do with properties {\(properties)}")
@@ -320,20 +325,9 @@ class Things3Destination: TaskDestination {
             throw Things3Error.appleScriptError("Batch create returned \(ids.count) IDs for \(tasks.count) tasks")
         }
 
-        // Set tags via URL scheme for tasks that have them (needs auth token)
-        if !authToken.isEmpty {
-            for (index, (task, _)) in tasks.enumerated() where !task.tags.isEmpty {
-                let tagNames = cleanTagsForThings(task.tags)
-                try updateTaskViaURLScheme(params: [
-                    "id": ids[index],
-                    "auth-token": authToken,
-                    "tags": tagNames.joined(separator: ",")
-                ])
-                try? await Task.sleep(nanoseconds: 50_000_000) // 50ms throttle between URL calls
-            }
-        }
+        // Tags are now set directly in the AppleScript properties above — no URL scheme needed
 
-        debugLog("[Things3] Batch created \(tasks.count) tasks")
+        debugLog("[Things3] Batch created \(tasks.count) tasks (tags embedded in AppleScript)")
         return ids
     }
 

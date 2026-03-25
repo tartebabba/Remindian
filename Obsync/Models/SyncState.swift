@@ -141,14 +141,14 @@ class SyncState: Codable {
         guard let source = task.obsidianSource else {
             // Fallback: use title-based ID
             let components = [task.title, task.targetList ?? ""]
-            return components.joined(separator: "|").data(using: .utf8)!.base64EncodedString()
+            return components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? ""
         }
         let components = [
             source.filePath,
             task.title,
             task.tags.sorted().joined(separator: ",")
         ]
-        return components.joined(separator: "|").data(using: .utf8)!.base64EncodedString()
+        return components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? ""
     }
 
     /// Generate a hash of all task fields to detect any changes.
@@ -164,6 +164,6 @@ class SyncState: Codable {
             task.targetList ?? "",
             task.tags.sorted().joined(separator: ",")
         ]
-        return components.joined(separator: "|").data(using: .utf8)!.base64EncodedString()
+        return components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? ""
     }
 }

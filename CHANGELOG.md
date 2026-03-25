@@ -4,6 +4,24 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.0.0 (March 2026)
+
+**First stable GA release.** Remindian is no longer beta.
+
+### New Features
+- **Tag exclusion (#47)** — Exclude tasks with specific tags from syncing (e.g., "Routine"). Configure in Settings > Exclude Tags
+- **TaskNotes subdirectory scanning (#48)** — TaskNotes now recursively scans all subdirectories within the configured folder, so you can organize task notes by project
+- **Homebrew tap (#35)** — Install via `brew tap Santofer/remindian && brew install --cask remindian`
+
+### Performance
+- **Faster Things 3 sync** — Tags are now set directly in the AppleScript batch call instead of separate URL scheme operations, eliminating per-task throttle delays
+
+### Bug Fixes
+- **Fixed crash-on-launch (#38)** — Eliminated all force unwraps across the entire codebase. Malformed URLs, corrupted data, or unexpected nil values are now handled gracefully instead of crashing
+- **Version display** — About section now correctly shows the running version
+
+---
+
 ## v4.3.1 (March 2026)
 
 ### New Features

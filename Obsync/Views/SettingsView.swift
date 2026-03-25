@@ -951,6 +951,19 @@ struct AdvancedSettingsView: View {
                 } label: {
                     Text("Exclude lists")
                 }
+                LabeledContent {
+                    TextField("e.g. Routine, SomeDay", text: Binding(
+                        get: { syncManager.config.excludedTags.joined(separator: ", ") },
+                        set: { syncManager.config.excludedTags = $0.split(separator: ",").map { String($0.trimmingCharacters(in: .whitespaces)) }.filter { !$0.isEmpty } }
+                    ))
+                    .textFieldStyle(.roundedBorder)
+                } label: {
+                    Text("Exclude tags")
+                }
+
+                Text("Tasks with any of these tags will be skipped during sync. Enter tag names without the # prefix, separated by commas.")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
             } header: {
                 Text("\(syncManager.config.taskDestinationType.displayName) List Filtering")
             }

@@ -183,7 +183,9 @@ class TickTickDestination: TaskDestination {
 
     /// Exchange an authorization code for access/refresh tokens.
     func exchangeCodeForToken(_ code: String) async throws {
-        let tokenURL = URL(string: "https://ticktick.com/oauth/token")!
+        guard let tokenURL = URL(string: "https://ticktick.com/oauth/token") else {
+            throw TickTickError.apiError(0, "Invalid token URL")
+        }
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -220,7 +222,9 @@ class TickTickDestination: TaskDestination {
             throw TickTickError.tokenExpired
         }
 
-        let tokenURL = URL(string: "https://ticktick.com/oauth/token")!
+        guard let tokenURL = URL(string: "https://ticktick.com/oauth/token") else {
+            throw TickTickError.apiError(0, "Invalid token URL")
+        }
         var request = URLRequest(url: tokenURL)
         request.httpMethod = "POST"
         request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
@@ -274,7 +278,9 @@ class TickTickDestination: TaskDestination {
             throw TickTickError.notConnected
         }
 
-        let url = URL(string: baseURL + path)!
+        guard let url = URL(string: baseURL + path) else {
+            throw TickTickError.apiError(0, "Invalid URL: \(baseURL + path)")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")

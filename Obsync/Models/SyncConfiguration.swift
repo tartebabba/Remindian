@@ -95,6 +95,9 @@ class SyncConfiguration: ObservableObject, Codable {
     // MARK: - Dataview Inline Fields (#41)
     @Published var enableDataviewFormat: Bool  // Also parse [key::value] inline fields from tasks
 
+    // MARK: - Tag Exclusion (#47)
+    @Published var excludedTags: [String]  // Tags to exclude from sync (e.g., ["Routine", "SomeDay"])
+
     // MARK: - Global Filter (#36)
     @Published var globalFilter: String  // Text that must appear in the file/section for tasks to be synced (e.g., "#task" for Obsidian Tasks global filter)
 
@@ -194,6 +197,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case filePathMappings
         case folderPathMappings
         case enableDataviewFormat
+        case excludedTags
         case globalFilter
         case todoistApiToken
         case tickTickAccessToken, tickTickRefreshToken, tickTickTokenExpiry
@@ -242,6 +246,7 @@ class SyncConfiguration: ObservableObject, Codable {
         maxCompletedTaskAgeDays: Int = 0,
         syncedRemindersLists: [String] = [],
         excludedRemindersLists: [String] = [],
+        excludedTags: [String] = [],
         addTaskLinkToReminders: Bool = true,
         taskNotesCompletedStatuses: [String] = ["done", "completed", "cancelled"],
         taskNotesOpenStatus: String = "open",
@@ -300,6 +305,7 @@ class SyncConfiguration: ObservableObject, Codable {
         self.maxCompletedTaskAgeDays = maxCompletedTaskAgeDays
         self.syncedRemindersLists = syncedRemindersLists
         self.excludedRemindersLists = excludedRemindersLists
+        self.excludedTags = excludedTags
         self.addTaskLinkToReminders = addTaskLinkToReminders
         self.taskNotesCompletedStatuses = taskNotesCompletedStatuses
         self.taskNotesOpenStatus = taskNotesOpenStatus
@@ -361,6 +367,7 @@ class SyncConfiguration: ObservableObject, Codable {
         maxCompletedTaskAgeDays = try container.decodeIfPresent(Int.self, forKey: .maxCompletedTaskAgeDays) ?? 0
         syncedRemindersLists = try container.decodeIfPresent([String].self, forKey: .syncedRemindersLists) ?? []
         excludedRemindersLists = try container.decodeIfPresent([String].self, forKey: .excludedRemindersLists) ?? []
+        excludedTags = try container.decodeIfPresent([String].self, forKey: .excludedTags) ?? []
         addTaskLinkToReminders = try container.decodeIfPresent(Bool.self, forKey: .addTaskLinkToReminders) ?? true
         taskNotesCompletedStatuses = try container.decodeIfPresent([String].self, forKey: .taskNotesCompletedStatuses) ?? ["done", "completed", "cancelled"]
         taskNotesOpenStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesOpenStatus) ?? "open"
@@ -422,6 +429,7 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(maxCompletedTaskAgeDays, forKey: .maxCompletedTaskAgeDays)
         try container.encode(syncedRemindersLists, forKey: .syncedRemindersLists)
         try container.encode(excludedRemindersLists, forKey: .excludedRemindersLists)
+        try container.encode(excludedTags, forKey: .excludedTags)
         try container.encode(addTaskLinkToReminders, forKey: .addTaskLinkToReminders)
         try container.encode(taskNotesCompletedStatuses, forKey: .taskNotesCompletedStatuses)
         try container.encode(taskNotesOpenStatus, forKey: .taskNotesOpenStatus)

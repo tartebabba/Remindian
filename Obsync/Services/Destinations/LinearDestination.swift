@@ -268,7 +268,9 @@ class LinearDestination: TaskDestination {
             throw LinearError.invalidApiKey
         }
 
-        let url = URL(string: apiURL)!
+        guard let url = URL(string: apiURL) else {
+            throw LinearError.apiError(0, "Invalid API URL: \(apiURL)")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue(cleanKey, forHTTPHeaderField: "Authorization")
