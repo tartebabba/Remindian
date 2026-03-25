@@ -285,9 +285,9 @@ struct MainDashboardView: View {
         let window = NSWindow(contentViewController: hostingController)
         window.identifier = NSUserInterfaceItemIdentifier("settings-window")
         window.title = "Settings"
-        window.setContentSize(NSSize(width: 550, height: 580))
+        window.setContentSize(NSSize(width: 750, height: 700))
         window.styleMask = [.titled, .closable, .resizable]
-        window.minSize = NSSize(width: 500, height: 450)
+        window.minSize = NSSize(width: 650, height: 550)
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
@@ -363,6 +363,7 @@ struct MainDashboardView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                .liquidGlass()
 
                 GroupBox("Configuration") {
                     VStack(alignment: .leading, spacing: 8) {
@@ -374,6 +375,7 @@ struct MainDashboardView: View {
                     }
                     .padding(.vertical, 8)
                 }
+                .liquidGlass()
 
                 Spacer()
 

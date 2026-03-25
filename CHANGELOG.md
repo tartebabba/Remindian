@@ -4,6 +4,16 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.1.0 (March 2026)
+
+### UI Improvements
+- **Fixed Settings layout** — List Mappings tab now scrolls properly; content no longer crops or overflows outside the window
+- **Larger Settings window** — Default size increased to 750x700 with proper minimum size constraints
+- **Flexible field widths** — Mapping input fields now flex with window resizing instead of using fixed widths
+- **Liquid Glass (macOS Tahoe)** — Dashboard panels and Settings adopt Apple's Liquid Glass design on macOS 26+. Falls back gracefully on older macOS versions
+
+---
+
 ## v5.0.0 (March 2026)
 
 **First stable GA release.** Remindian is no longer beta.

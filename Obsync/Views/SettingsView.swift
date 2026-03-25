@@ -31,8 +31,9 @@ struct SettingsView: View {
                 }
                 .tag(2)
         }
-        .frame(minWidth: 650, idealWidth: 750, minHeight: 600, idealHeight: 800)
+        .frame(minWidth: 700, idealWidth: 800, minHeight: 650, idealHeight: 850)
         .padding()
+        .liquidGlass(cornerRadius: 16)
     }
 }
 
@@ -389,6 +390,7 @@ struct ListMappingsView: View {
     @State private var newFolderList = ""
 
     var body: some View {
+        ScrollView {
         VStack(alignment: .leading, spacing: 16) {
             // MARK: - Tag Mappings
             Text("Tag \u{2192} List Mappings")
@@ -428,7 +430,7 @@ struct ListMappingsView: View {
             HStack {
                 TextField("Tag (e.g., work or +project)", text: $newTag)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 150)
+                    .frame(minWidth: 120, maxWidth: 250)
 
                 Image(systemName: "arrow.right")
                     .foregroundColor(.secondary)
@@ -439,7 +441,7 @@ struct ListMappingsView: View {
                         Text(list).tag(list)
                     }
                 }
-                .frame(width: 150)
+                .frame(minWidth: 120, maxWidth: 200)
 
                 Button("Add") {
                     guard !newTag.isEmpty && !newList.isEmpty else { return }
@@ -495,7 +497,7 @@ struct ListMappingsView: View {
             HStack {
                 TextField("File path (e.g., Projects/Work.md)", text: $newFilePath)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
+                    .frame(minWidth: 150, maxWidth: 300)
 
                 Image(systemName: "arrow.right")
                     .foregroundColor(.secondary)
@@ -506,7 +508,7 @@ struct ListMappingsView: View {
                         Text(list).tag(list)
                     }
                 }
-                .frame(width: 150)
+                .frame(minWidth: 120, maxWidth: 200)
 
                 Button("Add") {
                     guard !newFilePath.isEmpty && !newFileList.isEmpty else { return }
@@ -566,7 +568,7 @@ struct ListMappingsView: View {
             HStack {
                 TextField("Folder path (e.g., Projects/Work)", text: $newFolderPath)
                     .textFieldStyle(.roundedBorder)
-                    .frame(width: 200)
+                    .frame(minWidth: 150, maxWidth: 300)
 
                 Image(systemName: "arrow.right")
                     .foregroundColor(.secondary)
@@ -577,7 +579,7 @@ struct ListMappingsView: View {
                         Text(list).tag(list)
                     }
                 }
-                .frame(width: 150)
+                .frame(minWidth: 120, maxWidth: 200)
 
                 Button("Add") {
                     guard !newFolderPath.isEmpty && !newFolderList.isEmpty else { return }
@@ -613,6 +615,7 @@ struct ListMappingsView: View {
             }
         }
         .padding()
+        } // ScrollView
         .onAppear {
             syncManager.refreshLists()
         }
@@ -1011,6 +1014,28 @@ struct AdvancedSettingsView: View {
         } message: {
             Text("This will clear all sync mappings, history, and logs. The next sync will treat all tasks as new and re-create them in Reminders.")
         }
+    }
+}
+
+// MARK: - Liquid Glass (macOS Tahoe)
+
+/// Conditionally applies Liquid Glass effect on macOS 26+ (Tahoe).
+/// Falls back to no-op on older macOS versions.
+struct LiquidGlassModifier: ViewModifier {
+    var cornerRadius: CGFloat = 12
+
+    func body(content: Content) -> some View {
+        if #available(macOS 26, *) {
+            content.glassEffect(.regular, in: RoundedRectangle(cornerRadius: cornerRadius))
+        } else {
+            content
+        }
+    }
+}
+
+extension View {
+    func liquidGlass(cornerRadius: CGFloat = 12) -> some View {
+        modifier(LiquidGlassModifier(cornerRadius: cornerRadius))
     }
 }
 
