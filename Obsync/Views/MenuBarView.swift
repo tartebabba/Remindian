@@ -237,29 +237,7 @@ struct MenuBarView: View {
 
     private func openSettings() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-
-        for window in NSApplication.shared.windows {
-            if window.identifier?.rawValue == "settings-window" {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
-        }
-
-        let settingsView = SettingsView().environmentObject(SyncManager.shared)
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.identifier = NSUserInterfaceItemIdentifier("settings-window")
-        window.title = "Settings"
-        window.setContentSize(NSSize(width: 750, height: 700))
-        window.styleMask = [.titled, .closable, .resizable]
-        window.minSize = NSSize(width: 650, height: 550)
-        if #available(macOS 26, *) {
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.styleMask.insert(.fullSizeContentView)
-        }
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 

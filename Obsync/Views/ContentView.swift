@@ -231,27 +231,9 @@ struct ModernDashboardView: View {
 
     private func openSettingsWindow() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-
-        for window in NSApplication.shared.windows {
-            if window.identifier?.rawValue == "settings-window" {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
-        }
-
-        let settingsView = SettingsView().environmentObject(SyncManager.shared)
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.identifier = NSUserInterfaceItemIdentifier("settings-window")
-        window.title = "Settings"
-        window.setContentSize(NSSize(width: 750, height: 700))
-        window.styleMask = [.titled, .closable, .resizable]
-        window.minSize = NSSize(width: 650, height: 550)
-        window.titlebarAppearsTransparent = true
-        window.titleVisibility = .hidden
-        window.styleMask.insert(.fullSizeContentView)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        // Open the native Settings scene (declared in ObsyncApp)
+        // This gives us the automatic toolbar-style icon tabs
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 }
 
@@ -495,24 +477,7 @@ struct MainDashboardView: View {
 
     private func openSettingsWindow() {
         NSApplication.shared.activate(ignoringOtherApps: true)
-
-        for window in NSApplication.shared.windows {
-            if window.identifier?.rawValue == "settings-window" {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
-        }
-
-        let settingsView = SettingsView().environmentObject(SyncManager.shared)
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.identifier = NSUserInterfaceItemIdentifier("settings-window")
-        window.title = "Settings"
-        window.setContentSize(NSSize(width: 750, height: 700))
-        window.styleMask = [.titled, .closable, .resizable]
-        window.minSize = NSSize(width: 650, height: 550)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     var body: some View {

@@ -4,6 +4,16 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.3.0 (March 2026)
+
+### Native macOS Settings Window
+- **Toolbar-style icon tabs** — Settings now opens the native macOS Settings scene, giving the classic Preferences look with icons + labels in the toolbar (like Mail.app, Xcode)
+- **Brand icons** — Todoist, Things 3, TickTick, Asana, and Linear show their real logos in the destination picker (sourced from SimpleIcons, rendered as template images)
+- **Grouped form style** — All settings sections use `.formStyle(.grouped)` for modern rounded-card sections (like System Settings)
+- **Better tab icons** — "Mappings" tab uses swap arrows, "Advanced" uses horizontal sliders instead of wrench
+
+---
+
 ## v5.2.0 (March 2026)
 
 ### Design Overhaul — Liquid Glass (macOS Tahoe)

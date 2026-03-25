@@ -13,7 +13,7 @@ struct SettingsView: View {
 
             ListMappingsView()
                 .tabItem {
-                    Label("List Mappings", systemImage: "list.bullet")
+                    Label("Mappings", systemImage: "arrow.triangle.swap")
                 }
                 .tag(1)
 
@@ -27,12 +27,11 @@ struct SettingsView: View {
 
             AdvancedSettingsView()
                 .tabItem {
-                    Label("Advanced", systemImage: "wrench.and.screwdriver")
+                    Label("Advanced", systemImage: "slider.horizontal.3")
                 }
                 .tag(2)
         }
-        .frame(minWidth: 700, idealWidth: 800, minHeight: 650, idealHeight: 850)
-        .padding()
+        .frame(minWidth: 700, idealWidth: 800, minHeight: 600, idealHeight: 750)
     }
 }
 
@@ -56,9 +55,20 @@ struct GeneralSettingsView: View {
                     }
 
                     Picker("Sync To", selection: $syncManager.config.taskDestinationType) {
-                        ForEach(SyncConfiguration.TaskDestinationType.allCases, id: \.self) { type in
-                            Text(type.displayName).tag(type)
-                        }
+                        Label("Apple Reminders", systemImage: "checklist")
+                            .tag(SyncConfiguration.TaskDestinationType.appleReminders)
+                        Label("Things 3", image: "things")
+                            .tag(SyncConfiguration.TaskDestinationType.things3)
+                        Label("Todoist", image: "todoist")
+                            .tag(SyncConfiguration.TaskDestinationType.todoist)
+                        Label("TickTick", image: "ticktick")
+                            .tag(SyncConfiguration.TaskDestinationType.tickTick)
+                        Label("Asana", image: "asana")
+                            .tag(SyncConfiguration.TaskDestinationType.asana)
+                        Label("Linear", image: "linear")
+                            .tag(SyncConfiguration.TaskDestinationType.linear)
+                        Label("Calendar Feed", systemImage: "calendar")
+                            .tag(SyncConfiguration.TaskDestinationType.calendarFeed)
                     }
                     .onChange(of: syncManager.config.taskDestinationType) { _ in
                         syncManager.updateSourceAndDestination()
@@ -372,7 +382,7 @@ struct GeneralSettingsView: View {
                     Text("Appearance & Shortcuts")
                 }
             }
-            .padding()
+            .formStyle(.grouped)
         }
     }
 }
@@ -799,7 +809,7 @@ struct TaskNotesSettingsView: View {
                     Text("List/Folder Source")
                 }
             }
-            .padding()
+            .formStyle(.grouped)
         }
     }
 }
@@ -1003,8 +1013,8 @@ struct AdvancedSettingsView: View {
                 Text("Recovery")
             }
         }
+        .formStyle(.grouped)
         }
-        .padding()
         .alert("Reset Sync State?", isPresented: $showResetConfirmation) {
             Button("Cancel", role: .cancel) { }
             Button("Reset", role: .destructive) {
