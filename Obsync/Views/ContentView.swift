@@ -1,5 +1,49 @@
 import SwiftUI
 
+// MARK: - Shared Settings Window Helper
+
+/// Opens the Settings window reliably, even when running as menu bar accessory.
+/// Temporarily promotes to `.regular` activation policy so the window can display.
+func openNativeSettingsWindow() {
+    // Temporarily become a regular app so we can present windows
+    let wasAccessory = NSApp.activationPolicy() == .accessory
+    if wasAccessory {
+        NSApp.setActivationPolicy(.regular)
+    }
+    NSApplication.shared.activate(ignoringOtherApps: true)
+
+    // Try to find an existing settings window first
+    for window in NSApplication.shared.windows {
+        if window.title == "Settings" || window.title == "Preferences" ||
+           window.identifier?.rawValue == "settings-window" {
+            window.makeKeyAndOrderFront(nil)
+            return
+        }
+    }
+
+    // Try the native Settings scene (declared in ObsyncApp)
+    let opened: Bool
+    if #available(macOS 14, *) {
+        opened = NSApp.sendAction(Selector("showSettingsWindow:"), to: nil, from: nil)
+    } else {
+        opened = NSApp.sendAction(Selector("showPreferencesWindow:"), to: nil, from: nil)
+    }
+
+    // Fallback: create the window programmatically
+    if !opened {
+        let settingsView = SettingsView().environmentObject(SyncManager.shared)
+        let hostingController = NSHostingController(rootView: settingsView)
+        let window = NSWindow(contentViewController: hostingController)
+        window.identifier = NSUserInterfaceItemIdentifier("settings-window")
+        window.title = "Settings"
+        window.setContentSize(NSSize(width: 750, height: 700))
+        window.styleMask = [.titled, .closable, .resizable]
+        window.minSize = NSSize(width: 650, height: 550)
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+}
+
 struct ContentView: View {
     @EnvironmentObject var syncManager: SyncManager
     @State private var selectedTab = 0
@@ -230,39 +274,7 @@ struct ModernDashboardView: View {
     }
 
     private func openSettingsWindow() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-
-        // Try to find an existing settings window first
-        for window in NSApplication.shared.windows {
-            if window.identifier?.rawValue == "settings-window" ||
-               window.title == "Settings" || window.title == "Preferences" {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
-        }
-
-        // Open the native Settings scene (declared in ObsyncApp)
-        // macOS 14+: showSettingsWindow:, macOS 13: showPreferencesWindow:
-        let opened: Bool
-        if #available(macOS 14, *) {
-            opened = NSApp.sendAction(Selector("showSettingsWindow:"), to: nil, from: nil)
-        } else {
-            opened = NSApp.sendAction(Selector("showPreferencesWindow:"), to: nil, from: nil)
-        }
-
-        // Fallback: create the window programmatically if the native scene didn't open
-        if !opened {
-            let settingsView = SettingsView().environmentObject(SyncManager.shared)
-            let hostingController = NSHostingController(rootView: settingsView)
-            let window = NSWindow(contentViewController: hostingController)
-            window.identifier = NSUserInterfaceItemIdentifier("settings-window")
-            window.title = "Settings"
-            window.setContentSize(NSSize(width: 750, height: 700))
-            window.styleMask = [.titled, .closable, .resizable]
-            window.minSize = NSSize(width: 650, height: 550)
-            window.center()
-            window.makeKeyAndOrderFront(nil)
-        }
+        openNativeSettingsWindow()
     }
 }
 
@@ -362,7 +374,7 @@ struct PermissionRequestView: View {
 
             if needsSettingsButton {
                 Button("Open Settings") {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    openNativeSettingsWindow()
                 }
                 .buttonStyle(.borderedProminent)
             } else {
@@ -505,8 +517,7 @@ struct MainDashboardView: View {
     @State private var showResetConfirmation = false
 
     private func openSettingsWindow() {
-        NSApplication.shared.activate(ignoringOtherApps: true)
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        openNativeSettingsWindow()
     }
 
     var body: some View {
