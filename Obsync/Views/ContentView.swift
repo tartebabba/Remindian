@@ -3,7 +3,8 @@ import SwiftUI
 // MARK: - Shared Settings Window Helper
 
 /// Opens the Settings window reliably, even when running as menu bar accessory.
-/// Temporarily promotes to `.regular` activation policy so the window can display.
+/// Always creates the window programmatically — the native Settings scene +
+/// sendAction("showSettingsWindow:") returns true but doesn't display on macOS 26.
 func openNativeSettingsWindow() {
     // Temporarily become a regular app so we can present windows
     let wasAccessory = NSApp.activationPolicy() == .accessory
@@ -12,36 +13,25 @@ func openNativeSettingsWindow() {
     }
     NSApplication.shared.activate(ignoringOtherApps: true)
 
-    // Try to find an existing settings window first
+    // Reuse an existing settings window if already open
     for window in NSApplication.shared.windows {
-        if window.title == "Settings" || window.title == "Preferences" ||
-           window.identifier?.rawValue == "settings-window" {
+        if window.identifier?.rawValue == "settings-window" {
             window.makeKeyAndOrderFront(nil)
             return
         }
     }
 
-    // Try the native Settings scene (declared in ObsyncApp)
-    let opened: Bool
-    if #available(macOS 14, *) {
-        opened = NSApp.sendAction(Selector("showSettingsWindow:"), to: nil, from: nil)
-    } else {
-        opened = NSApp.sendAction(Selector("showPreferencesWindow:"), to: nil, from: nil)
-    }
-
-    // Fallback: create the window programmatically
-    if !opened {
-        let settingsView = SettingsView().environmentObject(SyncManager.shared)
-        let hostingController = NSHostingController(rootView: settingsView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.identifier = NSUserInterfaceItemIdentifier("settings-window")
-        window.title = "Settings"
-        window.setContentSize(NSSize(width: 750, height: 700))
-        window.styleMask = [.titled, .closable, .resizable]
-        window.minSize = NSSize(width: 650, height: 550)
-        window.center()
-        window.makeKeyAndOrderFront(nil)
-    }
+    // Always create programmatically — sendAction is unreliable on macOS 26
+    let settingsView = SettingsView().environmentObject(SyncManager.shared)
+    let hostingController = NSHostingController(rootView: settingsView)
+    let window = NSWindow(contentViewController: hostingController)
+    window.identifier = NSUserInterfaceItemIdentifier("settings-window")
+    window.title = "Settings"
+    window.setContentSize(NSSize(width: 750, height: 700))
+    window.styleMask = [.titled, .closable, .resizable]
+    window.minSize = NSSize(width: 650, height: 550)
+    window.center()
+    window.makeKeyAndOrderFront(nil)
 }
 
 struct ContentView: View {
