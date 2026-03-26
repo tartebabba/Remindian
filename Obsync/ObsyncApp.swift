@@ -60,6 +60,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             await SyncManager.shared.requestDestinationAccess()
         }
 
+        // Keep the main SwiftUI window alive when closed (hide instead of release)
+        // so we can reshow it from the menu bar without losing the Liquid Glass layout
+        safeInit("Window lifecycle") {
+            DispatchQueue.main.async {
+                for window in NSApp.windows where window.level == .normal {
+                    window.isReleasedWhenClosed = false
+                }
+            }
+        }
+
         // macOS 26+ (Tahoe): Configure main window for Liquid Glass
         if #available(macOS 26, *) {
             safeInit("Liquid Glass window") {

@@ -182,29 +182,41 @@ struct MenuBarView: View {
     }
 
     private func openMainWindow() {
+        // Temporarily become regular app if running as accessory (hidden dock icon)
+        let wasAccessory = NSApp.activationPolicy() == .accessory
+        if wasAccessory {
+            NSApp.setActivationPolicy(.regular)
+        }
         NSApplication.shared.activate(ignoringOtherApps: true)
 
+        // Find the SwiftUI WindowGroup window (created at launch) and reshow it.
+        // This preserves the NavigationSplitView / Liquid Glass layout.
+        // The WindowGroup window is NOT identified by "main-window" — it's the
+        // SwiftUI-managed window whose content is ContentView.
         for window in NSApplication.shared.windows {
-            if window.identifier?.rawValue == "main-window" ||
-               window.title.contains("Remindian") ||
-               String(describing: type(of: window.contentView)).contains("ContentView") {
+            // Skip menu bar panels, sheets, and other auxiliary windows
+            if window.level == .normal,
+               window.styleMask.contains(.titled),
+               !window.styleMask.contains(.utilityWindow),
+               window.identifier?.rawValue != "about-window",
+               window.identifier?.rawValue != "settings-window" {
                 window.makeKeyAndOrderFront(nil)
                 return
             }
         }
 
+        // If the SwiftUI window was fully released (shouldn't happen normally),
+        // use NSApp to open a new instance of the WindowGroup
+        if #available(macOS 14, *) {
+            // openWindow requires Environment, but we can trigger via notification
+        }
+        // Last resort: create programmatically (will get legacy layout)
         let contentView = ContentView().environmentObject(SyncManager.shared)
         let hostingController = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hostingController)
-        window.identifier = NSUserInterfaceItemIdentifier("main-window")
         window.title = "Remindian"
-        window.setContentSize(NSSize(width: 600, height: 500))
+        window.setContentSize(NSSize(width: 800, height: 600))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        if #available(macOS 26, *) {
-            window.titlebarAppearsTransparent = true
-            window.titleVisibility = .hidden
-            window.styleMask.insert(.fullSizeContentView)
-        }
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
