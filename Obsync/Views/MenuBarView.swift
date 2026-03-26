@@ -190,33 +190,30 @@ struct MenuBarView: View {
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         // Find the SwiftUI WindowGroup window (created at launch) and reshow it.
-        // This preserves the NavigationSplitView / Liquid Glass layout.
-        // The WindowGroup window is NOT identified by "main-window" — it's the
-        // SwiftUI-managed window whose content is ContentView.
+        // The WindowGroup window uses .hiddenTitleBar so it does NOT have .titled
+        // in its styleMask. We find it by excluding known non-main windows.
+        let knownAuxIds: Set<String> = ["about-window", "settings-window"]
         for window in NSApplication.shared.windows {
-            // Skip menu bar panels, sheets, and other auxiliary windows
-            if window.level == .normal,
-               window.styleMask.contains(.titled),
-               !window.styleMask.contains(.utilityWindow),
-               window.identifier?.rawValue != "about-window",
-               window.identifier?.rawValue != "settings-window" {
-                window.makeKeyAndOrderFront(nil)
-                return
-            }
+            let id = window.identifier?.rawValue ?? ""
+            // Skip: menu bar panels, status items, known aux windows, tiny windows
+            if window.level != .normal { continue }
+            if knownAuxIds.contains(id) { continue }
+            if window.frame.width < 100 || window.frame.height < 100 { continue }
+            // This should be our main SwiftUI WindowGroup window
+            window.makeKeyAndOrderFront(nil)
+            return
         }
 
-        // If the SwiftUI window was fully released (shouldn't happen normally),
-        // use NSApp to open a new instance of the WindowGroup
-        if #available(macOS 14, *) {
-            // openWindow requires Environment, but we can trigger via notification
-        }
-        // Last resort: create programmatically (will get legacy layout)
+        // Window was fully destroyed — shouldn't happen with isReleasedWhenClosed=false
+        // but as safety net, create a new one (will get legacy layout on first open)
+        debugLog("[MenuBar] Main window not found, creating new one")
         let contentView = ContentView().environmentObject(SyncManager.shared)
         let hostingController = NSHostingController(rootView: contentView)
         let window = NSWindow(contentViewController: hostingController)
         window.title = "Remindian"
         window.setContentSize(NSSize(width: 800, height: 600))
         window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.isReleasedWhenClosed = false
         window.center()
         window.makeKeyAndOrderFront(nil)
     }
