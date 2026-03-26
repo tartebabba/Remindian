@@ -182,40 +182,30 @@ struct MenuBarView: View {
     }
 
     private func openMainWindow() {
-        // Temporarily become regular app if running as accessory (hidden dock icon)
-        let wasAccessory = NSApp.activationPolicy() == .accessory
-        if wasAccessory {
-            NSApp.setActivationPolicy(.regular)
-        }
+        // Switch to regular app so we can own the menu bar and show windows
+        NSApp.setActivationPolicy(.regular)
         NSApplication.shared.activate(ignoringOtherApps: true)
 
-        // Find the SwiftUI WindowGroup window (created at launch) and reshow it.
-        // The WindowGroup window uses .hiddenTitleBar so it does NOT have .titled
-        // in its styleMask. We find it by excluding known non-main windows.
-        let knownAuxIds: Set<String> = ["about-window", "settings-window"]
+        // Show every normal-level window. The SwiftUI WindowGroup window
+        // survives close (isReleasedWhenClosed=false) but becomes invisible.
+        // orderFront on ALL of them ensures the right one appears.
+        var found = false
         for window in NSApplication.shared.windows {
-            let id = window.identifier?.rawValue ?? ""
-            // Skip: menu bar panels, status items, known aux windows, tiny windows
-            if window.level != .normal { continue }
-            if knownAuxIds.contains(id) { continue }
-            if window.frame.width < 100 || window.frame.height < 100 { continue }
-            // This should be our main SwiftUI WindowGroup window
-            window.makeKeyAndOrderFront(nil)
-            return
+            if window.level == .normal && !window.isVisible {
+                window.makeKeyAndOrderFront(nil)
+                found = true
+                break
+            }
         }
 
-        // Window was fully destroyed — shouldn't happen with isReleasedWhenClosed=false
-        // but as safety net, create a new one (will get legacy layout on first open)
-        debugLog("[MenuBar] Main window not found, creating new one")
-        let contentView = ContentView().environmentObject(SyncManager.shared)
-        let hostingController = NSHostingController(rootView: contentView)
-        let window = NSWindow(contentViewController: hostingController)
-        window.title = "Remindian"
-        window.setContentSize(NSSize(width: 800, height: 600))
-        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
-        window.isReleasedWhenClosed = false
-        window.center()
-        window.makeKeyAndOrderFront(nil)
+        // If nothing was found, it means the window was destroyed.
+        // Trigger SwiftUI to recreate the WindowGroup by opening a new instance.
+        if !found {
+            // On macOS 14+, we can use openWindow; on 13, sendAction
+            if #available(macOS 14, *) {
+                NSApp.sendAction(Selector("newWindowForTab:"), to: nil, from: nil)
+            }
+        }
     }
 
     private func openAboutWindow() {
