@@ -27,10 +27,11 @@ class TickTickDestination: TaskDestination {
     private let baseURL = "https://api.ticktick.com/open/v1"
     private let session = URLSession.shared
 
-    // TickTick OAuth credentials — register at developer.ticktick.com
-    static let clientId = ""  // Set after registering app
-    static let clientSecret = ""  // Set after registering app
-    static let redirectURI = "remindian://oauth/ticktick"
+    // TickTick OAuth credentials — registered at developer.ticktick.com
+    static let clientId = "cVieUxm74J0zDt5RVt"
+    static let clientSecret = "ypcLQCk6Zh2TtBK83UvNs1hXwnuS4Mqs"
+    static let redirectURI = "http://127.0.0.1:23847/oauth/ticktick"
+    static let callbackPort: UInt16 = 23847
 
     // Cache
     private var cachedProjects: [TickTickProject] = []
@@ -178,7 +179,10 @@ class TickTickDestination: TaskDestination {
         !clientId.isEmpty && !clientSecret.isEmpty
     }
 
-    /// Initiate the OAuth flow by opening the browser.
+    /// Local HTTP server for OAuth callback
+    private var callbackServer: TickTickOAuthServer?
+
+    /// Initiate the OAuth flow by opening the browser and starting a local callback server.
     func startOAuthFlow() {
         guard Self.isOAuthConfigured else {
             debugLog("[TickTick] OAuth not configured — client credentials missing")
@@ -189,7 +193,20 @@ class TickTickDestination: TaskDestination {
             return
         }
 
-        let authURL = "https://ticktick.com/oauth/authorize?client_id=\(Self.clientId)&redirect_uri=\(Self.redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? Self.redirectURI)&response_type=code&scope=tasks:read%20tasks:write"
+        // Start local HTTP server to receive the callback
+        callbackServer = TickTickOAuthServer(port: Self.callbackPort) { [weak self] code in
+            guard let self = self else { return }
+            debugLog("[TickTick] OAuth code received via localhost callback")
+            DispatchQueue.main.async {
+                OAuthCallbackHandler.shared.tickTickAuthCode = code
+            }
+            // Server stops itself after receiving the code
+            self.callbackServer = nil
+        }
+        callbackServer?.start()
+
+        let encodedRedirect = Self.redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? Self.redirectURI
+        let authURL = "https://ticktick.com/oauth/authorize?client_id=\(Self.clientId)&redirect_uri=\(encodedRedirect)&response_type=code&scope=tasks:read%20tasks:write"
         if let url = URL(string: authURL) {
             NSWorkspace.shared.open(url)
         }
@@ -399,6 +416,119 @@ private struct TickTickTokenResponse: Codable {
 }
 
 // MARK: - Errors
+
+// MARK: - Local OAuth Callback Server
+
+/// Minimal HTTP server on localhost to receive the TickTick OAuth redirect.
+/// Listens on a fixed port, extracts the `code` query parameter, calls the
+/// completion handler, then shuts down.
+class TickTickOAuthServer {
+    private var serverSocket: Int32 = -1
+    private let port: UInt16
+    private let onCode: (String) -> Void
+    private var listening = false
+
+    init(port: UInt16, onCode: @escaping (String) -> Void) {
+        self.port = port
+        self.onCode = onCode
+    }
+
+    func start() {
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            self?.listen()
+        }
+    }
+
+    func stop() {
+        listening = false
+        if serverSocket >= 0 {
+            close(serverSocket)
+            serverSocket = -1
+        }
+    }
+
+    private func listen() {
+        serverSocket = socket(AF_INET, SOCK_STREAM, 0)
+        guard serverSocket >= 0 else {
+            debugLog("[TickTickOAuth] Failed to create socket")
+            return
+        }
+
+        var opt: Int32 = 1
+        setsockopt(serverSocket, SOL_SOCKET, SO_REUSEADDR, &opt, socklen_t(MemoryLayout<Int32>.size))
+
+        var addr = sockaddr_in()
+        addr.sin_family = sa_family_t(AF_INET)
+        addr.sin_port = port.bigEndian
+        addr.sin_addr.s_addr = inet_addr("127.0.0.1")
+
+        let bindResult = withUnsafePointer(to: &addr) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(serverSocket, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+
+        guard bindResult == 0 else {
+            debugLog("[TickTickOAuth] Failed to bind to port \(port): \(String(cString: strerror(errno)))")
+            close(serverSocket)
+            return
+        }
+
+        Darwin.listen(serverSocket, 1)
+        listening = true
+        debugLog("[TickTickOAuth] Listening on 127.0.0.1:\(port)")
+
+        // Set a timeout so we don't block forever
+        var timeout = timeval(tv_sec: 120, tv_usec: 0)
+        setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+
+        while listening {
+            let clientSocket = accept(serverSocket, nil, nil)
+            guard clientSocket >= 0 else { break }
+
+            var buffer = [UInt8](repeating: 0, count: 4096)
+            let bytesRead = recv(clientSocket, &buffer, buffer.count, 0)
+            guard bytesRead > 0 else {
+                close(clientSocket)
+                continue
+            }
+
+            let request = String(bytes: buffer[0..<bytesRead], encoding: .utf8) ?? ""
+
+            // Extract the path from "GET /oauth/ticktick?code=xxx HTTP/1.1"
+            if let firstLine = request.components(separatedBy: "\r\n").first,
+               let pathPart = firstLine.components(separatedBy: " ").dropFirst().first,
+               let components = URLComponents(string: pathPart),
+               let code = components.queryItems?.first(where: { $0.name == "code" })?.value {
+
+                // Send success response
+                let html = """
+                <html><body style="font-family:-apple-system,system-ui;display:flex;justify-content:center;align-items:center;height:100vh;margin:0;background:#f5f5f7">
+                <div style="text-align:center"><h1 style="color:#1d1d1f">Connected!</h1><p style="color:#86868b">TickTick is now connected to Remindian. You can close this tab.</p></div>
+                </body></html>
+                """
+                let response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: \(html.utf8.count)\r\nConnection: close\r\n\r\n\(html)"
+                _ = response.withCString { send(clientSocket, $0, Int(strlen($0)), 0) }
+                close(clientSocket)
+
+                onCode(code)
+                stop()
+                return
+            } else {
+                // Not the callback we're looking for
+                let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+                _ = response.withCString { send(clientSocket, $0, Int(strlen($0)), 0) }
+                close(clientSocket)
+            }
+        }
+
+        stop()
+    }
+
+    deinit {
+        stop()
+    }
+}
 
 enum TickTickError: LocalizedError {
     case notConnected
