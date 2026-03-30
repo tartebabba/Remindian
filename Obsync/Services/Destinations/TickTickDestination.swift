@@ -173,8 +173,22 @@ class TickTickDestination: TaskDestination {
 
     // MARK: - OAuth
 
+    /// Whether TickTick OAuth credentials are configured.
+    static var isOAuthConfigured: Bool {
+        !clientId.isEmpty && !clientSecret.isEmpty
+    }
+
     /// Initiate the OAuth flow by opening the browser.
     func startOAuthFlow() {
+        guard Self.isOAuthConfigured else {
+            debugLog("[TickTick] OAuth not configured — client credentials missing")
+            NotificationCenter.default.post(
+                name: NSNotification.Name("TickTickOAuthNotConfigured"),
+                object: nil
+            )
+            return
+        }
+
         let authURL = "https://ticktick.com/oauth/authorize?client_id=\(Self.clientId)&redirect_uri=\(Self.redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? Self.redirectURI)&response_type=code&scope=tasks:read%20tasks:write"
         if let url = URL(string: authURL) {
             NSWorkspace.shared.open(url)

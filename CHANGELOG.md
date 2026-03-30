@@ -4,6 +4,14 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.5.0 (March 2026)
+
+### Bug Fixes
+- **Universal Binary restored** — DMG now includes both arm64 and x86_64 architectures. Intel Mac users can run v5.5.0+ again (#50)
+- **TickTick OAuth guard** — Selecting TickTick as destination now shows "Coming soon" instead of opening a broken OAuth page with "invalid_client" error (#49). TickTick OAuth registration is pending
+
+---
+
 ## v5.4.0 (March 2026)
 
 ### Unified Single-Window Experience

@@ -107,7 +107,21 @@ struct GeneralSettingsView: View {
                     }
 
                     if syncManager.config.taskDestinationType == .tickTick {
-                        if syncManager.config.tickTickAccessToken.isEmpty {
+                        if !TickTickDestination.isOAuthConfigured {
+                            // OAuth credentials not yet registered
+                            HStack {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .foregroundColor(.orange)
+                                Text("TickTick integration coming soon")
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.leading, 20)
+
+                            Text("TickTick OAuth registration is pending. This destination will be available in a future update.")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 20)
+                        } else if syncManager.config.tickTickAccessToken.isEmpty {
                             Button("Connect TickTick") {
                                 syncManager.connectTickTick()
                             }
