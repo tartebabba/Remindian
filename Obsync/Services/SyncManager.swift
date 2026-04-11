@@ -306,9 +306,21 @@ class SyncManager: ObservableObject {
         if result.errors.isEmpty {
             statusMessage = result.summary
         } else {
-            let errorMessages = result.errors.map { $0.localizedDescription }.joined(separator: "\n")
-            showErrorMessage("Sync completed with errors:\n\(errorMessages)")
-            statusMessage = "Sync completed with \(result.errors.count) errors"
+            // Deduplicate identical error messages (e.g. multiple -3002 errors)
+            var seen = Set<String>()
+            var uniqueMessages: [String] = []
+            for error in result.errors {
+                let msg = error.localizedDescription
+                if seen.insert(msg).inserted {
+                    uniqueMessages.append(msg)
+                }
+            }
+            let errorSummary = uniqueMessages.joined(separator: "\n")
+            let countNote = result.errors.count > uniqueMessages.count
+                ? " (\(result.errors.count) total)"
+                : ""
+            showErrorMessage("Sync completed with errors\(countNote):\n\(errorSummary)")
+            statusMessage = "Sync completed with \(result.errors.count) error\(result.errors.count == 1 ? "" : "s")"
         }
 
         isSyncing = false

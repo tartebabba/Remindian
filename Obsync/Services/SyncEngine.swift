@@ -148,6 +148,11 @@ class SyncEngine {
         // Capture file timestamps at sync start (for change detection during writes)
         let syncStartTimestamp = Date()
 
+        // Reset the destination's internal cache before syncing to clear stale state
+        // (prevents errors like ReminderKit -3002 from lingering across syncs)
+        destination.refresh()
+        debugLog("[SyncEngine] Destination cache refreshed")
+
         do {
             // Step 1: Get all tasks from source
             debugLog("[SyncEngine] Scanning source: \(source.sourceName)")
