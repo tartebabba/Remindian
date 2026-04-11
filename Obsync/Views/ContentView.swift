@@ -365,18 +365,40 @@ struct PermissionRequestView: View {
                 .foregroundColor(.secondary)
                 .frame(maxWidth: 400)
 
-            if needsSettingsButton {
+            if destinationType == .tickTick {
+                if syncManager.config.tickTickAccessToken.isEmpty {
+                    Button("Connect TickTick") {
+                        syncManager.connectTickTick()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Connected to TickTick")
+                    }
+                }
+            } else if needsSettingsButton {
                 Button("Open Settings") {
                     openNativeSettingsWindow()
                 }
                 .buttonStyle(.borderedProminent)
             } else {
-                Button("Grant Access") {
-                    Task {
-                        await syncManager.requestDestinationAccess()
+                VStack(spacing: 8) {
+                    Button("Grant Access") {
+                        Task {
+                            await syncManager.requestDestinationAccess()
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+
+                    if destinationType == .things3 {
+                        Button("Open System Settings") {
+                            NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+                        }
+                        .font(.caption)
                     }
                 }
-                .buttonStyle(.borderedProminent)
             }
 
             Text(hintText)
@@ -452,9 +474,9 @@ struct PermissionRequestView: View {
 
     private var needsSettingsButton: Bool {
         switch destinationType {
-        case .appleReminders, .things3:
+        case .appleReminders, .things3, .tickTick:
             return false
-        case .todoist, .tickTick, .asana, .linear, .calendarFeed:
+        case .todoist, .asana, .linear, .calendarFeed:
             return true
         }
     }

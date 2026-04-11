@@ -4,6 +4,19 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.6.0 (April 2026)
+
+### Bug Fixes
+- **Things 3 sync stuck** — Fixed Logbook fetch that could hang indefinitely when iterating tasks with empty completion dates. Added 500-item cap and 30-second AppleScript timeout to prevent sync from blocking forever (#56)
+- **TickTick onboarding** — "Grant Access" button during onboarding now correctly opens the TickTick OAuth flow instead of silently failing. Added proper "Connect TickTick" button in both onboarding and main permission views (#54)
+- **Things 3 permission guidance** — Added "Open System Settings" button that links directly to Privacy & Security > Automation when Things 3 automation access is denied
+
+### Improvements
+- **AppleScript timeout wrapper** — All Things 3 AppleScript operations now have a 30-second timeout to prevent indefinite blocking
+- **Logbook safety** — Tasks with empty completion dates are skipped during Logbook fetch, and iteration is capped at 500 items maximum
+
+---
+
 ## v5.5.0 (March 2026)
 
 ### Bug Fixes

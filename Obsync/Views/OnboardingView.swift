@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 /// Onboarding wizard shown on first launch to guide users through setup.
 struct OnboardingView: View {
@@ -66,6 +67,14 @@ struct OnboardingView: View {
             .padding(20)
         }
         .frame(width: 500, height: 400)
+        .onReceive(OAuthCallbackHandler.shared.$tickTickAuthCode.compactMap { $0 }) { _ in
+            // When TickTick OAuth completes, the token exchange happens in SyncManager.
+            // Re-check access after a short delay to let the token exchange finish.
+            Task {
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+                await syncManager.requestDestinationAccess()
+            }
+        }
     }
 
     // MARK: - Steps
@@ -273,6 +282,36 @@ struct OnboardingView: View {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundColor(.green)
                     Text("Access granted")
+                }
+            } else if syncManager.config.taskDestinationType == .tickTick {
+                if syncManager.config.tickTickAccessToken.isEmpty {
+                    Button("Connect TickTick") {
+                        syncManager.connectTickTick()
+                    }
+                    .buttonStyle(.borderedProminent)
+                } else {
+                    HStack {
+                        Image(systemName: "checkmark.circle.fill")
+                            .foregroundColor(.green)
+                        Text("Connected to TickTick")
+                    }
+                }
+            } else if syncManager.config.taskDestinationType == .things3 {
+                VStack(spacing: 8) {
+                    Button(isRequestingAccess ? "Requesting..." : "Grant Access") {
+                        isRequestingAccess = true
+                        Task {
+                            await syncManager.requestDestinationAccess()
+                            isRequestingAccess = false
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(isRequestingAccess)
+
+                    Button("Open System Settings") {
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Automation")!)
+                    }
+                    .font(.caption)
                 }
             } else {
                 Button(isRequestingAccess ? "Requesting..." : "Grant Access") {

@@ -107,7 +107,7 @@ class Things3Destination: TaskDestination {
         // When a task is completed in Things 3, it moves to the Logbook.
         // Without this, the sync engine sees the task as "deleted" and recreates it.
         // We limit to the last 7 days to avoid fetching thousands of old completed tasks.
-        let logbookTasks = try fetchRecentLogbookTasks(withinDays: 7)
+        let logbookTasks = try await fetchRecentLogbookTasks(withinDays: 7)
         tasks.append(contentsOf: logbookTasks)
         debugLog("[Things3] Fetched \(logbookTasks.count) recently completed tasks from Logbook")
 
@@ -497,63 +497,84 @@ class Things3Destination: TaskDestination {
         }
     }
 
+    /// Execute AppleScript with a timeout to prevent sync from blocking indefinitely.
+    private func executeAppleScript(_ source: String, timeout: TimeInterval = 30) async throws -> NSAppleEventDescriptor? {
+        try await withThrowingTaskGroup(of: NSAppleEventDescriptor?.self) { group in
+            group.addTask {
+                let script = NSAppleScript(source: source)
+                var error: NSDictionary?
+                let result = script?.executeAndReturnError(&error)
+                if let error = error {
+                    throw Things3Error.appleScriptError(error[NSAppleScript.errorMessage] as? String ?? "Unknown")
+                }
+                return result
+            }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+                throw Things3Error.appleScriptTimeout
+            }
+            guard let result = try await group.next() else {
+                group.cancelAll()
+                return nil
+            }
+            group.cancelAll()
+            return result
+        }
+    }
+
     /// Fetch recently completed tasks from the Things 3 Logbook.
     /// Uses AppleScript date comparison to limit results to `withinDays` days,
     /// avoiding the performance hit of fetching thousands of old completed tasks.
-    private func fetchRecentLogbookTasks(withinDays days: Int) throws -> [SyncTask] {
+    private func fetchRecentLogbookTasks(withinDays days: Int) async throws -> [SyncTask] {
         // AppleScript: iterate Logbook tasks, skip those completed more than N days ago.
         // Things 3 Logbook is sorted by completion date (newest first), so we stop
-        // early once we hit a task older than the cutoff.
-        let script = NSAppleScript(source: """
+        // early once we hit a task older than the cutoff. Capped at 500 items max.
+        let source = """
             tell application id "com.culturedcode.ThingsMac"
                 set cutoff to (current date) - \(days) * days
                 set todoList to {}
+                set itemCount to 0
                 repeat with toDo in to dos of list "Logbook"
+                    set itemCount to itemCount + 1
+                    if itemCount > 500 then exit repeat
                     set todoCompletionDate to ""
                     try
                         set todoCompletionDate to completion date of toDo
                     end try
-                    if todoCompletionDate is not "" then
+                    if todoCompletionDate is "" then
+                        -- Skip tasks with no completion date to avoid infinite loop
+                    else
                         if todoCompletionDate < cutoff then exit repeat
-                    end if
-
-                    set todoId to id of toDo
-                    set todoName to name of toDo
-                    set todoNotes to notes of toDo
-                    set todoStatus to status of toDo
-                    set todoDueDate to ""
-                    try
-                        set todoDueDate to due date of toDo as string
-                    end try
-                    set todoCompletionDateStr to ""
-                    try
+                        set todoId to id of toDo
+                        set todoName to name of toDo
+                        set todoNotes to notes of toDo
+                        set todoStatus to status of toDo
+                        set todoDueDate to ""
+                        try
+                            set todoDueDate to due date of toDo as string
+                        end try
                         set todoCompletionDateStr to completion date of toDo as string
-                    end try
-                    set todoTagNames to tag names of toDo
-                    set todoProject to ""
-                    try
-                        set todoProject to name of project of toDo
-                    end try
-                    set todoArea to ""
-                    try
-                        set todoArea to name of area of toDo
-                    end try
-
-                    set todoData to todoId & "|||" & todoName & "|||" & todoNotes & "|||" & (todoStatus as string) & "|||" & todoDueDate & "|||" & todoCompletionDateStr & "|||" & todoTagNames & "|||" & todoProject & "|||" & todoArea
-                    set end of todoList to todoData
+                        set todoTagNames to tag names of toDo
+                        set todoProject to ""
+                        try
+                            set todoProject to name of project of toDo
+                        end try
+                        set todoArea to ""
+                        try
+                            set todoArea to name of area of toDo
+                        end try
+                        set todoData to todoId & "|||" & todoName & "|||" & todoNotes & "|||" & (todoStatus as string) & "|||" & todoDueDate & "|||" & todoCompletionDateStr & "|||" & todoTagNames & "|||" & todoProject & "|||" & todoArea
+                        set end of todoList to todoData
+                    end if
                 end repeat
                 set AppleScript's text item delimiters to "~~~"
                 return todoList as string
             end tell
-        """)
+        """
 
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error),
+        guard let result = try await executeAppleScript(source, timeout: 30),
               let resultString = result.stringValue else {
-            if let error = error {
-                let message = error[NSAppleScript.errorMessage] as? String ?? "Unknown error"
-                debugLog("[Things3] AppleScript error fetching Logbook: \(message)")
-            }
+            debugLog("[Things3] AppleScript returned nil fetching Logbook")
             return []
         }
 
@@ -730,6 +751,7 @@ enum Things3Error: LocalizedError {
     case notInstalled
     case appleScriptAccessDenied
     case appleScriptError(String)
+    case appleScriptTimeout
     case authTokenRequired
     case invalidURL
     case taskNotFound(String)
@@ -743,6 +765,8 @@ enum Things3Error: LocalizedError {
             return "Cannot access Things 3 via AppleScript. Please grant access in System Settings > Privacy & Security > Automation."
         case .appleScriptError(let message):
             return "Things 3 AppleScript error: \(message)"
+        case .appleScriptTimeout:
+            return "Things 3 AppleScript timed out. The Logbook may be very large — try reducing the sync history window."
         case .authTokenRequired:
             return "Things 3 auth token required for updates. Go to Things > Settings > General > Enable Things URLs to get your token."
         case .invalidURL:
