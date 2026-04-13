@@ -145,9 +145,6 @@ class SyncEngine {
             }
         }
 
-        // Capture file timestamps at sync start (for change detection during writes)
-        let syncStartTimestamp = Date()
-
         // Reset the destination's internal cache before syncing to clear stale state
         // (prevents errors like ReminderKit -3002 from lingering across syncs)
         destination.refresh()
@@ -207,6 +204,11 @@ class SyncEngine {
                 result.errors.append(SyncError.syncCancelled)
                 return result
             }
+
+            // Capture file timestamps AFTER vault scan completes.
+            // Any edits saved by Obsidian before/during the scan are already
+            // reflected in our task data, so they shouldn't block writeback.
+            let syncStartTimestamp = Date()
 
             // Step 2: Get all tasks from destination
             debugLog("[SyncEngine] Fetching from destination: \(destination.destinationName)...")
