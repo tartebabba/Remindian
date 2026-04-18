@@ -1010,12 +1010,18 @@ struct AdvancedSettingsView: View {
             Section {
                 Button("Open Backups Folder") {
                     if let url = FileBackupService.shared.backupDirectoryURL {
+                        // Ensure directory exists before trying to open it (may not exist on first launch)
+                        try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
                         NSWorkspace.shared.open(url)
                     }
                 }
 
                 Button("Open Audit Log") {
                     if let url = AuditLog.shared.auditLogURL {
+                        if !FileManager.default.fileExists(atPath: url.path) {
+                            // Create empty file so Finder has something to open
+                            FileManager.default.createFile(atPath: url.path, contents: nil)
+                        }
                         NSWorkspace.shared.open(url)
                     }
                 }

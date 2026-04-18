@@ -102,7 +102,7 @@ class SyncEngine {
 
     /// Perform sync: Source -> Destination (source is the source of truth).
     /// Optionally writes completion status back to source (surgical edit only).
-    func performSync(config: SyncConfiguration) async -> SyncResult {
+    func performSync(config: SyncConfiguration, onProgress: ((String) -> Void)? = nil) async -> SyncResult {
         let startTime = Date()
         var result = SyncResult()
         result.isDryRun = config.dryRunMode
@@ -152,6 +152,7 @@ class SyncEngine {
 
         do {
             // Step 1: Get all tasks from source
+            onProgress?("Scanning vault...")
             debugLog("[SyncEngine] Scanning source: \(source.sourceName)")
             debugLog("[SyncEngine] Vault: \(config.vaultPath), excluded: \(config.excludedFolders), included: \(config.includedFolders)")
             var obsidianTasks = try source.scanTasks(config: config)
@@ -211,6 +212,7 @@ class SyncEngine {
             let syncStartTimestamp = Date()
 
             // Step 2: Get all tasks from destination
+            onProgress?("Fetching from \(destination.destinationName)...")
             debugLog("[SyncEngine] Fetching from destination: \(destination.destinationName)...")
             var remindersTasks = try await destination.fetchAllTasks()
             debugLog("[SyncEngine] Found \(remindersTasks.count) destination tasks")
@@ -248,6 +250,7 @@ class SyncEngine {
             }
 
             // Step 3: Build lookup maps
+            onProgress?("Comparing \(obsidianTasks.count) tasks...")
             var obsidianMap: [String: SyncTask] = [:]
             for task in obsidianTasks {
                 let id = source.generateTaskId(for: task)
@@ -921,6 +924,7 @@ class SyncEngine {
 
             // Batch-create all new tasks (uses batch AppleScript for Things 3)
             if !newTasksToCreate.isEmpty {
+                onProgress?("Creating \(newTasksToCreate.count) tasks in \(destination.destinationName)...")
                 await createNewTasks(tasks: newTasksToCreate, config: config, result: &result)
             }
 
@@ -928,6 +932,7 @@ class SyncEngine {
             // Any entries remaining in remindersMap were NOT matched to an Obsidian task
             // and have no existing mapping. These are new tasks created in Reminders.
             if config.enableNewTaskWriteback && !remindersMap.isEmpty {
+                onProgress?("Writing back \(remindersMap.count) tasks to Obsidian...")
                 debugLog("[SyncEngine] Found \(remindersMap.count) unmatched Reminders tasks for inbox writeback")
                 for (remindersId, rTask) in remindersMap {
                     // Skip completed tasks unless configured to sync them

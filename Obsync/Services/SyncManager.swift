@@ -275,7 +275,11 @@ class SyncManager: ObservableObject {
         statusMessage = config.dryRunMode ? "Dry run..." : "Syncing..."
 
         let wasFirstSync = isFirstSync
-        let result = await syncEngine.performSync(config: config)
+        let result = await syncEngine.performSync(config: config) { [weak self] message in
+            Task { @MainActor in
+                self?.statusMessage = message
+            }
+        }
         debugLog("[SyncManager] Sync result: \(result.summary), errors: \(result.errors.count), details: \(result.details.count)")
 
         lastSyncResult = result

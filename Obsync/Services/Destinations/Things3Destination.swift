@@ -76,19 +76,20 @@ class Things3Destination: TaskDestination {
         }
 
         // Test AppleScript access — use bundle ID for reliable resolution in sandbox
-        let testScript = NSAppleScript(source: """
+        // Uses 10s timeout to prevent hanging if Things 3 is unresponsive
+        let testScriptSource = """
             tell application id "com.culturedcode.ThingsMac"
                 return name
             end tell
-        """)
-        var error: NSDictionary?
-        let result = testScript?.executeAndReturnError(&error)
-
-        if error != nil {
+        """
+        do {
+            let result = try await executeAppleScript(testScriptSource, timeout: 10)
+            return result != nil
+        } catch Things3Error.appleScriptTimeout {
+            throw Things3Error.appleScriptTimeout
+        } catch {
             throw Things3Error.appleScriptAccessDenied
         }
-
-        return result != nil
     }
 
     // MARK: - Fetching
@@ -99,7 +100,7 @@ class Things3Destination: TaskDestination {
         // Fetch from active lists
         let activeLists = ["Today", "Inbox", "Anytime", "Upcoming", "Someday"]
         for listName in activeLists {
-            let listTasks = try fetchTasksFromList(listName)
+            let listTasks = try await fetchTasksFromList(listName)
             tasks.append(contentsOf: listTasks)
         }
 
@@ -122,8 +123,8 @@ class Things3Destination: TaskDestination {
 
         var lists = ["Inbox", "Today", "Anytime", "Upcoming", "Someday"]
 
-        // Fetch projects and areas via AppleScript
-        let script = NSAppleScript(source: """
+        // Fetch projects and areas via AppleScript (with 15s timeout)
+        let scriptSource = """
             tell application id "com.culturedcode.ThingsMac"
                 set projectNames to {}
                 repeat with p in projects
@@ -135,10 +136,9 @@ class Things3Destination: TaskDestination {
                 end repeat
                 return {projectNames, areaNames}
             end tell
-        """)
+        """
 
-        var error: NSDictionary?
-        if let result = script?.executeAndReturnError(&error) {
+        if let result = try? await executeAppleScript(scriptSource, timeout: 15) {
             // Parse the AppleScript result
             if result.numberOfItems >= 2 {
                 // Projects
@@ -158,6 +158,8 @@ class Things3Destination: TaskDestination {
                     }
                 }
             }
+        } else {
+            debugLog("[Things3] Timed out or failed fetching projects/areas, using default lists")
         }
 
         cachedLists = lists
@@ -234,12 +236,10 @@ class Things3Destination: TaskDestination {
             """
         }
 
-        // Execute with retry — sandbox AppleScript can race against app initialization
-        let (result, error) = executeAppleScriptWithRetry(source: scriptSource)
-        guard let result = result,
+        // Execute with retry + 30s timeout — sandbox AppleScript can race against app initialization
+        guard let result = try await executeAppleScriptWithRetryAndTimeout(source: scriptSource),
               let taskId = result.stringValue, !taskId.isEmpty else {
-            let message = (error?[NSAppleScript.errorMessage] as? String) ?? "Unknown error"
-            throw Things3Error.appleScriptError("Failed to create task: \(message)")
+            throw Things3Error.appleScriptError("Failed to create task: no ID returned")
         }
 
         // Tags are now embedded in AppleScript properties — no URL scheme needed for creation
@@ -313,11 +313,9 @@ class Things3Destination: TaskDestination {
         scriptLines.append("end tell")
 
         let scriptSource = scriptLines.joined(separator: "\n")
-        let (result, error) = executeAppleScriptWithRetry(source: scriptSource)
-        guard let result = result,
+        guard let result = try await executeAppleScriptWithRetryAndTimeout(source: scriptSource),
               let resultString = result.stringValue, !resultString.isEmpty else {
-            let message = (error?[NSAppleScript.errorMessage] as? String) ?? "Unknown error"
-            throw Things3Error.appleScriptError("Batch create failed: \(message)")
+            throw Things3Error.appleScriptError("Batch create failed: no IDs returned")
         }
 
         let ids = resultString.components(separatedBy: "|||")
@@ -422,7 +420,7 @@ class Things3Destination: TaskDestination {
 
     func deleteTask(withId id: String) async throws {
         // Things 3 URL scheme doesn't support deletion.
-        // Use AppleScript to move to Trash instead.
+        // Use AppleScript to move to Trash instead (with 30s timeout).
         let scriptSource = """
             tell application id "com.culturedcode.ThingsMac"
                 set theTodo to to do id "\(id)"
@@ -430,12 +428,7 @@ class Things3Destination: TaskDestination {
             end tell
         """
 
-        let (_, error) = executeAppleScriptWithRetry(source: scriptSource)
-
-        if let error = error {
-            let message = error[NSAppleScript.errorMessage] as? String ?? "Unknown error"
-            throw Things3Error.appleScriptError(message)
-        }
+        _ = try await executeAppleScriptWithRetryAndTimeout(source: scriptSource)
     }
 
     func refresh() {
@@ -445,41 +438,34 @@ class Things3Destination: TaskDestination {
 
     // MARK: - AppleScript Helpers
 
-    /// Execute an AppleScript with one retry on failure.
+    /// Execute an AppleScript with one retry on failure and a timeout to prevent indefinite blocking.
     /// If the first attempt fails (e.g., app not initialized), we retry once with a
-    /// `launch` preamble to ensure Things 3 is running.
-    private func executeAppleScriptWithRetry(source: String) -> (NSAppleEventDescriptor?, NSDictionary?) {
-        let script = NSAppleScript(source: source)
-        var error: NSDictionary?
-        let result = script?.executeAndReturnError(&error)
-
-        if let error = error {
-            let message = error[NSAppleScript.errorMessage] as? String ?? ""
-            debugLog("[Things3] AppleScript failed (attempt 1): \(message)")
+    /// `launch` preamble to ensure Things 3 is running. Both attempts are capped by the timeout.
+    private func executeAppleScriptWithRetryAndTimeout(source: String, timeout: TimeInterval = 30) async throws -> NSAppleEventDescriptor? {
+        do {
+            return try await executeAppleScript(source, timeout: timeout)
+        } catch Things3Error.appleScriptTimeout {
+            throw Things3Error.appleScriptTimeout
+        } catch {
+            debugLog("[Things3] AppleScript failed (attempt 1): \(error.localizedDescription)")
 
             // Retry with an explicit launch + short delay in case Things wasn't ready
-            Thread.sleep(forTimeInterval: 0.3)
+            try? await Task.sleep(nanoseconds: 300_000_000) // 0.3s async sleep
             let retrySource = source.replacingOccurrences(
                 of: "tell application id \"com.culturedcode.ThingsMac\"",
                 with: "tell application id \"com.culturedcode.ThingsMac\"\n                launch\n                delay 0.3"
             )
-            debugLog("[Things3] Retrying AppleScript with launch...")
+            debugLog("[Things3] Retrying AppleScript with launch preamble...")
 
-            var retryError: NSDictionary?
-            let retryScript = NSAppleScript(source: retrySource)
-            let retryResult = retryScript?.executeAndReturnError(&retryError)
-
-            if let retryError = retryError {
-                let retryMessage = retryError[NSAppleScript.errorMessage] as? String ?? ""
-                debugLog("[Things3] AppleScript failed (attempt 2): \(retryMessage)")
-                return (nil, retryError)
+            do {
+                let result = try await executeAppleScript(retrySource, timeout: timeout)
+                debugLog("[Things3] AppleScript succeeded on retry")
+                return result
+            } catch {
+                debugLog("[Things3] AppleScript failed (attempt 2): \(error.localizedDescription)")
+                throw error
             }
-
-            debugLog("[Things3] AppleScript succeeded on retry")
-            return (retryResult, nil)
         }
-
-        return (result, nil)
     }
 
     /// Send an update to Things 3 via URL scheme (locale-independent).
@@ -622,9 +608,9 @@ class Things3Destination: TaskDestination {
         return tasks
     }
 
-    /// Fetch tasks from a specific Things 3 list via AppleScript.
-    private func fetchTasksFromList(_ listName: String) throws -> [SyncTask] {
-        let script = NSAppleScript(source: """
+    /// Fetch tasks from a specific Things 3 list via AppleScript (with 30s timeout).
+    private func fetchTasksFromList(_ listName: String) async throws -> [SyncTask] {
+        let scriptSource = """
             tell application id "com.culturedcode.ThingsMac"
                 set todoList to {}
                 repeat with toDo in to dos of list "\(listName)"
@@ -656,15 +642,11 @@ class Things3Destination: TaskDestination {
                 set AppleScript's text item delimiters to "~~~"
                 return todoList as string
             end tell
-        """)
+        """
 
-        var error: NSDictionary?
-        guard let result = script?.executeAndReturnError(&error),
+        guard let result = try await executeAppleScript(scriptSource, timeout: 30),
               let resultString = result.stringValue else {
-            if let error = error {
-                let message = error[NSAppleScript.errorMessage] as? String ?? "Unknown error"
-                debugLog("[Things3] AppleScript error fetching \(listName): \(message)")
-            }
+            debugLog("[Things3] AppleScript returned nil fetching \(listName)")
             return []
         }
 
@@ -766,7 +748,7 @@ enum Things3Error: LocalizedError {
         case .appleScriptError(let message):
             return "Things 3 AppleScript error: \(message)"
         case .appleScriptTimeout:
-            return "Things 3 AppleScript timed out. The Logbook may be very large — try reducing the sync history window."
+            return "Things 3 AppleScript timed out after 30 seconds. Things 3 may be unresponsive, or have too many tasks. Try restarting Things 3."
         case .authTokenRequired:
             return "Things 3 auth token required for updates. Go to Things > Settings > General > Enable Things URLs to get your token."
         case .invalidURL:
