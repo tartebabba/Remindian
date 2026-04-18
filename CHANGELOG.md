@@ -4,6 +4,18 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.6.1 (April 2026)
+
+### Bug Fixes
+- **Things 3 sync hanging indefinitely** — v5.6.0 only applied the 30s timeout to the Logbook fetch. Now ALL 8 AppleScript call sites have timeouts: fetching from 5 active lists (30s each), requesting access (10s), fetching available lists (15s), and task creation/deletion (30s with retry) (#56)
+- **Open Backups Folder / Open Audit Log buttons** — Fixed buttons that silently did nothing on fresh installs by creating the directory/file if it doesn't exist yet
+
+### Improvements
+- **Real-time sync progress** — UI now shows step-by-step progress during sync ("Scanning vault...", "Fetching from Things 3...", "Comparing N tasks...", "Creating N tasks...") instead of a static "Syncing..." message
+- **Async AppleScript retry** — Retry logic now uses async sleep instead of blocking `Thread.sleep`, preventing UI freezes during retry attempts
+
+---
+
 ## v5.6.0 (April 2026)
 
 ### Bug Fixes
