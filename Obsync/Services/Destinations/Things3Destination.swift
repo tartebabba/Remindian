@@ -190,10 +190,15 @@ class Things3Destination: TaskDestination {
             properties += ", status:completed"
         }
         // Embed tags directly in AppleScript properties (#speed)
+        // Things 3's `tag names` property is declared as text — a comma-separated
+        // string, not an AppleScript list. Passing `{"a","b"}` fails with -1700
+        // `Can't make {...} into type text` when the list has 2+ elements.
         if !task.tags.isEmpty {
             let tagNames = cleanTagsForThings(task.tags)
-            let tagList = tagNames.map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ", ")
-            properties += ", tag names:{\(tagList)}"
+            let tagString = tagNames
+                .map { $0.replacingOccurrences(of: "\"", with: "\\\"") }
+                .joined(separator: ", ")
+            properties += ", tag names:\"\(tagString)\""
         }
 
         // Build a locale-independent due date setter using AppleScript date components
@@ -274,10 +279,14 @@ class Things3Destination: TaskDestination {
             }
 
             // Embed tags directly in AppleScript to avoid per-task URL scheme calls (#speed)
+            // See comment on single-task createTask: `tag names` requires a text
+            // value, not an AppleScript list.
             if !task.tags.isEmpty {
                 let tagNames = cleanTagsForThings(task.tags)
-                let tagList = tagNames.map { "\"\($0.replacingOccurrences(of: "\"", with: "\\\""))\"" }.joined(separator: ", ")
-                properties += ", tag names:{\(tagList)}"
+                let tagString = tagNames
+                    .map { $0.replacingOccurrences(of: "\"", with: "\\\"") }
+                    .joined(separator: ", ")
+                properties += ", tag names:\"\(tagString)\""
             }
 
             scriptLines.append("    set newTodo to make new to do with properties {\(properties)}")
@@ -421,10 +430,16 @@ class Things3Destination: TaskDestination {
     func deleteTask(withId id: String) async throws {
         // Things 3 URL scheme doesn't support deletion.
         // Use AppleScript to move to Trash instead (with 30s timeout).
+        // Error -1728 ("Can't get to do id X") means the task is already gone —
+        // swallow it so stale sync state doesn't surface as a user-visible error.
         let scriptSource = """
             tell application id "com.culturedcode.ThingsMac"
-                set theTodo to to do id "\(id)"
-                delete theTodo
+                try
+                    set theTodo to to do id "\(id)"
+                    delete theTodo
+                on error errMsg number errNum
+                    if errNum is not -1728 then error errMsg number errNum
+                end try
             end tell
         """
 
