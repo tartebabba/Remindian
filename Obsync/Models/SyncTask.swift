@@ -16,6 +16,13 @@ struct SyncTask: Identifiable, Equatable, Codable {
     var notes: String?
     var clientName: String? // Extracted from hierarchical tags (e.g., work/clients/somfy → "somfy") or file path
 
+    /// Raw recurrence rule text preserved from the Obsidian line, e.g. "every week",
+    /// "every month on the 1st when done", or "🔁 every 2 weeks". Nil if the task is
+    /// not recurring. Used to (a) disambiguate the completed + new-uncompleted pair
+    /// the Obsidian Tasks plugin produces on each occurrence completion, and (b) in
+    /// a future phase, to read/write EKRecurrenceRule on the Reminders side. (#57)
+    var recurrenceRule: String?
+
     // Source tracking for sync
     var obsidianSource: ObsidianSource?
     var remindersId: String?
@@ -90,7 +97,8 @@ struct SyncTask: Identifiable, Equatable, Codable {
         obsidianSource: ObsidianSource? = nil,
         remindersId: String? = nil,
         lastModified: Date = Date(),
-        url: URL? = nil
+        url: URL? = nil,
+        recurrenceRule: String? = nil
     ) {
         self.id = id
         self.title = title
@@ -108,6 +116,7 @@ struct SyncTask: Identifiable, Equatable, Codable {
         self.remindersId = remindersId
         self.lastModified = lastModified
         self.url = url
+        self.recurrenceRule = recurrenceRule
     }
 }
 
@@ -154,19 +163,47 @@ extension SyncTask {
             }
         }
         
-        // Strip recurrence markers from content before tag/title parsing
-        // Case 1: Emoji-based recurrence (🔁/🔂 + optional FE0F + everything after until next emoji/tag/date)
+        // Extract recurrence rule — capture the rule text (for #57 recurring-task
+        // handling) and strip it from content before tag/title parsing.
+        //
+        // The Obsidian Tasks plugin stores recurrence as either:
+        //   Case 1: Emoji-prefixed — `🔁 every week`, `🔂 every 2 days when done`
+        //   Case 2: Plain-text     — `every month on the 1st when done`
+        //
+        // We capture the first match of either case. The captured text is stored
+        // verbatim on `SyncTask.recurrenceRule` and also signals that this task
+        // needs line-number-aware ID generation (so completed + new-uncompleted
+        // copies don't collide on the same obsidianId).
+        var recurrenceRule: String? = nil
+
+        // Case 1: emoji-based
         for recEmoji in ["🔁", "🔂"] {
             let recPattern = "\(recEmoji)\u{FE0F}?\\s*[^📅🛫⏳✅⏫🔼🔽#]*"
             if let recRegex = try? NSRegularExpression(pattern: recPattern, options: []) {
                 let recRange = NSRange(content.startIndex..., in: content)
+                if let match = recRegex.firstMatch(in: content, options: [], range: recRange),
+                   let matchRange = Range(match.range, in: content) {
+                    let captured = String(content[matchRange]).trimmingCharacters(in: .whitespaces)
+                    if !captured.isEmpty {
+                        recurrenceRule = captured
+                    }
+                }
                 content = recRegex.stringByReplacingMatches(in: content, options: [], range: recRange, withTemplate: "")
             }
         }
-        // Case 2: Plain-text recurrence (e.g. "every month on the 1st when done")
+
+        // Case 2: plain-text (only consider if emoji case didn't hit)
         let plainRecPattern = "\\bevery\\s+(?:month|week|day|year|other|january|february|march|april|may|june|july|august|september|october|november|december|\\d+\\s+days?)\\b[^📅🛫⏳✅⏫🔼🔽#]*"
         if let plainRecRegex = try? NSRegularExpression(pattern: plainRecPattern, options: [.caseInsensitive]) {
             let recRange = NSRange(content.startIndex..., in: content)
+            if recurrenceRule == nil,
+               let match = plainRecRegex.firstMatch(in: content, options: [], range: recRange),
+               let matchRange = Range(match.range, in: content) {
+                let captured = String(content[matchRange]).trimmingCharacters(in: .whitespaces)
+                if !captured.isEmpty {
+                    recurrenceRule = captured
+                }
+            }
             content = plainRecRegex.stringByReplacingMatches(in: content, options: [], range: recRange, withTemplate: "")
         }
 
@@ -259,7 +296,8 @@ extension SyncTask {
                 filePath: filePath,
                 lineNumber: lineNumber,
                 originalLine: line
-            )
+            ),
+            recurrenceRule: recurrenceRule
         )
     }
     

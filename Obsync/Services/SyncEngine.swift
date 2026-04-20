@@ -258,6 +258,15 @@ class SyncEngine {
             }
             debugLog("[SyncEngine] Obsidian map has \(obsidianMap.count) unique IDs (from \(obsidianTasks.count) tasks)")
 
+            // Build remindersMap early so pass (a) dedup can consult reminder state
+            // (needed to detect recurring-task completion events — see #57).
+            var remindersMap: [String: SyncTask] = [:]
+            for task in remindersTasks {
+                if let id = task.remindersId {
+                    remindersMap[id] = task
+                }
+            }
+
             // Step 3b: Deduplicate tasks with the same title across the vault.
             //
             // Two dedup passes:
@@ -269,6 +278,16 @@ class SyncEngine {
             var idsToRemove: Set<String> = []
 
             // --- Pass (a): same-file recurring pairs ---
+            // The Obsidian Tasks plugin inserts a new uncompleted occurrence above
+            // the just-completed copy (e.g. after marking "Pay rent 🔁 every month"
+            // complete, the file has both `- [ ] Pay rent 🔁 …` and `- [x] Pay rent 🔁 …`).
+            // Normally we drop the completed sibling so we don't try to sync it
+            // separately. BUT if the completed copy has an existing mapping (i.e.
+            // this is a brand-new completion event we haven't propagated yet), we
+            // MUST keep it in the map so the mapping loop below detects the
+            // completion and writes it to the destination. The Step 5 "new tasks"
+            // loop has a matching recurring-sibling-inherit step that reuses the
+            // mapping on the uncompleted copy, so no duplicate gets created. (#57)
             var activeTasksByFileAndTitle: [String: String] = [:]  // "file|title" → obsidianId
             for (id, task) in obsidianMap {
                 if !task.isCompleted, let filePath = task.obsidianSource?.filePath {
@@ -280,8 +299,18 @@ class SyncEngine {
                 if task.isCompleted, let filePath = task.obsidianSource?.filePath {
                     let key = "\(filePath)|\(task.title)"
                     if activeTasksByFileAndTitle[key] != nil {
+                        // For RECURRING tasks, keep the completed copy in the map.
+                        // The mapping loop needs to see it to propagate the completion
+                        // to the destination (scenario 1 in #57); Step 5's
+                        // recurring-sibling inheritance then transfers the mapping
+                        // to the new uncompleted occurrence without creating a dup.
+                        // For non-recurring tasks (e.g. one-off tasks duplicated in
+                        // the same file by mistake), keep the original dedup behavior.
+                        if task.recurrenceRule != nil {
+                            continue
+                        }
                         idsToRemove.insert(id)
-                        debugLog("[SyncEngine] Dedup: same-file recurring → skipping completed \"\(task.title)\" in \(filePath)")
+                        debugLog("[SyncEngine] Dedup: same-file pair → skipping completed \"\(task.title)\" in \(filePath)")
                     }
                 }
             }
@@ -331,12 +360,6 @@ class SyncEngine {
                 debugLog("[SyncEngine] Removed \(idsToRemove.count) duplicate tasks total")
             }
 
-            var remindersMap: [String: SyncTask] = [:]
-            for task in remindersTasks {
-                if let id = task.remindersId {
-                    remindersMap[id] = task
-                }
-            }
             debugLog("[SyncEngine] Existing mappings: \(syncState.mappings.count)")
 
             // Safety check: if source task count dropped by >50% compared to
@@ -824,6 +847,46 @@ class SyncEngine {
             for (obsidianId, task) in obsidianMap {
                 if processedObsidianIds.contains(obsidianId) {
                     continue
+                }
+
+                // Recurring-task next-occurrence handoff (#57 Phase A).
+                // If this task has a recurrence rule AND is uncompleted AND a
+                // processed sibling in the same file with the same title exists
+                // (i.e. the completed copy of the previous occurrence which just
+                // got its completion written back to the destination), transfer
+                // that sibling's mapping here instead of creating a new
+                // destination task. This prevents the duplicate accumulation
+                // described in #57 scenarios 1 & 2.
+                if task.recurrenceRule != nil, !task.isCompleted, let filePath = task.obsidianSource?.filePath {
+                    let siblingId = processedObsidianIds.first { procId in
+                        guard procId != obsidianId,
+                              let procTask = obsidianMap[procId],
+                              procTask.recurrenceRule != nil,
+                              procTask.obsidianSource?.filePath == filePath,
+                              procTask.title == task.title else { return false }
+                        return true
+                    }
+                    if let siblingId = siblingId,
+                       let siblingMapping = syncState.findMapping(obsidianId: siblingId) {
+                        debugLog("[SyncEngine] Recurring next occurrence: inheriting mapping from sibling \(siblingId) → \(obsidianId) for \"\(task.title)\"")
+                        if !config.dryRunMode {
+                            syncState.removeMapping(obsidianId: siblingId)
+                            syncState.addOrUpdateMapping(
+                                obsidianId: obsidianId,
+                                remindersId: siblingMapping.remindersId,
+                                obsidianHash: SyncState.generateTaskHash(task),
+                                remindersHash: siblingMapping.lastRemindersHash
+                            )
+                        }
+                        processedObsidianIds.insert(obsidianId)
+                        result.details.append(SyncLogDetail(
+                            action: .updated,
+                            taskTitle: task.title,
+                            filePath: task.obsidianSource?.filePath,
+                            errorMessage: "Recurring task: new occurrence inherited sibling mapping"
+                        ))
+                        continue
+                    }
                 }
 
                 // Skip completed tasks if configured

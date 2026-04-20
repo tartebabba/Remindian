@@ -15,7 +15,13 @@ class SyncState: Codable {
     /// v7: stable IDs — removed mutable fields (dates, priority) from obsidianId
     ///     to prevent delete+recreate on metadata changes. Re-linking in sync engine
     ///     handles the migration gracefully.
-    static let currentStateVersion = 7
+    /// v8: recurring tasks include lineNumber in obsidianId so the completed copy
+    ///     and the new-uncompleted copy that Obsidian Tasks plugin inserts get
+    ///     distinct IDs. Fixes #57 scenarios 1 & 2 (duplicates / missed occurrences
+    ///     when completing in Obsidian or Reminders). Non-recurring tasks keep
+    ///     content-stable IDs (no lineNumber) so reordering still doesn't break
+    ///     mappings.
+    static let currentStateVersion = 8
 
     struct TaskMapping: Codable, Identifiable {
         var id: String { obsidianId }
@@ -65,11 +71,14 @@ class SyncState: Codable {
 
             // Handle state version migrations
             if state.stateVersion < currentStateVersion {
-                if state.stateVersion == 6 {
+                if state.stateVersion == 6 || state.stateVersion == 7 {
                     // v6 → v7: ObsidianId format changed (removed mutable fields).
-                    // Keep existing mappings — the sync engine's re-linking logic
-                    // will gracefully match old IDs to new ones by title.
-                    print("Sync state v6 → v7: ID format migration. Keeping mappings for re-linking.")
+                    // v7 → v8: Recurring tasks now include lineNumber in their ID.
+                    //   Non-recurring tasks keep stable IDs — only recurring ones
+                    //   get new IDs, and those are rare. Re-linking in the sync
+                    //   engine matches by title, so existing mappings gracefully
+                    //   transition without deleting/recreating destination tasks.
+                    print("Sync state v\(state.stateVersion) → v\(currentStateVersion): ID format migration. Keeping mappings for re-linking.")
                     state.stateVersion = currentStateVersion
                     state.save()
                 } else {
@@ -128,26 +137,42 @@ class SyncState: Codable {
     // MARK: - Hash Generation
 
     /// Generate a stable ID from task content.
-    /// Uses filePath + title + tags + lineNumber. The line number disambiguates
-    /// recurring task pairs (completed + new uncompleted copy) that share the
-    /// same title/file/tags.
     ///
-    /// Content-hash based ID that is stable across line reordering.
-    /// Uses filePath + title + tags — NOT line numbers (which change when
-    /// tasks are reordered) and NOT dates/priority/completion (which are
-    /// mutable fields that change independently and would cause
-    /// delete+recreate instead of in-place update).
+    /// - **Non-recurring tasks:** hash of `filePath + title + tags` (no line number).
+    ///   Stable across line reordering. NOT including dates/priority/completion
+    ///   (mutable fields that change independently and would cause delete+recreate
+    ///   instead of in-place update).
+    ///
+    /// - **Recurring tasks (task.recurrenceRule != nil):** hash also includes the
+    ///   `lineNumber`. The Obsidian Tasks plugin inserts a new line for each new
+    ///   occurrence (e.g. after completing `- [x] Pay rent 🔁 every month` it adds
+    ///   `- [ ] Pay rent 🔁 every month` above it). Without lineNumber in the hash,
+    ///   both lines collide on the same obsidianId — the second one overwrites the
+    ///   first in the obsidianMap, and sync misbehaves (scenarios 1 & 2 in #57).
+    ///   Including lineNumber gives them distinct IDs; the same-file dedup pass
+    ///   in SyncEngine then correctly keeps the uncompleted one and drops the
+    ///   completed one.
+    ///
+    /// Reordering a recurring task changes its ID, which orphans the old mapping —
+    /// the sync engine's re-linking logic reattaches it by title. This is an
+    /// acceptable trade-off: recurring tasks get reordered rarely, and the
+    /// alternative (missed occurrences + duplicate creation) is worse.
     static func generateObsidianId(task: SyncTask) -> String {
         guard let source = task.obsidianSource else {
             // Fallback: use title-based ID
             let components = [task.title, task.targetList ?? ""]
             return components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? ""
         }
-        let components = [
+        var components = [
             source.filePath,
             task.title,
             task.tags.sorted().joined(separator: ",")
         ]
+        if task.recurrenceRule != nil {
+            // Recurring: disambiguate by line so completed + new uncompleted copies
+            // don't collapse to a single map entry. See #57.
+            components.append("L\(source.lineNumber)")
+        }
         return components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? ""
     }
 

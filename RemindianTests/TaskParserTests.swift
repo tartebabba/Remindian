@@ -116,7 +116,7 @@ final class TaskParserTests: XCTestCase {
         XCTAssertEqual(task?.targetList, "work")
     }
 
-    // MARK: - Recurrence Stripping
+    // MARK: - Recurrence Parsing (#57)
 
     func testRecurrenceEmojiStripped() {
         let line = "- [ ] Pay rent 🔁 every month 📅 2026-03-01"
@@ -134,6 +134,36 @@ final class TaskParserTests: XCTestCase {
         XCTAssertNotNil(task)
         // Plain text recurrence should be stripped
         XCTAssertFalse(task!.title.contains("every week"))
+    }
+
+    /// #57 Phase A: recurrence rule text is preserved on SyncTask.recurrenceRule
+    /// (not just stripped), so we can disambiguate completed+new-uncompleted pairs
+    /// and later write EKRecurrenceRule on the Reminders side.
+    func testRecurrenceRulePreservedEmojiForm() {
+        let line = "- [ ] Pay rent 🔁 every month 📅 2026-03-01"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNotNil(task?.recurrenceRule, "Recurrence rule should be captured, not discarded")
+        XCTAssertTrue(task!.recurrenceRule!.contains("every month"))
+    }
+
+    func testRecurrenceRulePreservedPlainTextForm() {
+        let line = "- [ ] Weekly standup every week 📅 2026-03-01"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNotNil(task?.recurrenceRule, "Plain-text recurrence should be captured")
+        XCTAssertTrue(task!.recurrenceRule!.contains("every week"))
+    }
+
+    func testNonRecurringTaskHasNilRule() {
+        let line = "- [ ] Just a task 📅 2026-03-01"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNil(task?.recurrenceRule)
+    }
+
+    func testRecurrenceWithWhenDoneClause() {
+        let line = "- [ ] Review budget 🔁 every 2 weeks when done 📅 2026-03-01"
+        let task = SyncTask.fromObsidianLine(line, filePath: "/test.md", lineNumber: 1)
+        XCTAssertNotNil(task?.recurrenceRule)
+        XCTAssertTrue(task!.recurrenceRule!.contains("every 2 weeks"))
     }
 
     // MARK: - Edge Cases

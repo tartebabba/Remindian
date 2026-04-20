@@ -4,6 +4,21 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.7.0 (April 2026)
+
+### Recurring tasks (#57 Phase A)
+
+The Obsidian Tasks plugin creates a new line for each occurrence of a recurring task: when you complete `- [x] Pay rent 🔁 every month 📅 2026-01-01`, it inserts a new uncompleted `- [ ] Pay rent 🔁 every month 📅 2026-02-01` above. Previously Remindian stripped the `🔁` rule during parsing and generated the same `obsidianId` for both lines, so the sync engine treated them as one task — completing in Obsidian silently overwrote the new occurrence, or left the destination with duplicates piling up on each cycle.
+
+- **Parser preserves recurrence rule** — `SyncTask.recurrenceRule: String?` now holds the captured rule text (e.g. `"🔁 every month"`, `"every 2 weeks when done"`) instead of discarding it.
+- **Recurring tasks get line-number-aware IDs** — `generateObsidianId` includes the line number only when the task has a recurrence rule, so the completed copy and the new-uncompleted copy get distinct IDs. Non-recurring tasks keep content-stable IDs, so normal reordering still doesn't break sync mappings.
+- **Pass (a) dedup updated** — Completed recurring copies stay in the sync map so the main loop can detect and propagate the completion to the destination. The new "Step 5 sibling inheritance" logic then transfers the reminder mapping from the completed sibling to the new uncompleted occurrence without creating a duplicate.
+- **Sync state v7 → v8 migration** — Adds lineNumber to the recurring-task ID format. Existing non-recurring mappings are unchanged; the re-linking logic handles recurring mappings gracefully. Rare edge case: if you have an in-flight recurring completion at the exact moment you upgrade (completed in Obsidian but never synced), the completion event may need a second manual sync to propagate — subsequent completions work on the first sync.
+
+Phase A covers scenarios 1 & 2 from #57 (tasks that originate in Obsidian). Scenarios 3 & 4 (tasks originating in Apple Reminders with native `EKRecurrenceRule`) are Phase B and are still under active development.
+
+---
+
 ## v5.6.2 (April 2026)
 
 ### Bug Fixes

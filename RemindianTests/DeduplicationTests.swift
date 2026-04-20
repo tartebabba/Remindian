@@ -53,6 +53,7 @@ final class DeduplicationTests: XCTestCase {
 
     func testIdStableAcrossLineReordering() {
         // Content-based IDs should be stable even if line numbers change
+        // (for NON-recurring tasks; recurring tasks deliberately include line number — see #57).
         let task1 = SyncTask(
             title: "Test task",
             obsidianSource: SyncTask.ObsidianSource(
@@ -72,7 +73,73 @@ final class DeduplicationTests: XCTestCase {
 
         let id1 = SyncState.generateObsidianId(task: task1)
         let id2 = SyncState.generateObsidianId(task: task2)
-        XCTAssertEqual(id1, id2, "Content-hash IDs should be stable across line reordering")
+        XCTAssertEqual(id1, id2, "Content-hash IDs should be stable across line reordering for non-recurring tasks")
+    }
+
+    // MARK: - Recurring-task ID disambiguation (#57 Phase A)
+
+    /// The Obsidian Tasks plugin creates a new task line for each occurrence of a
+    /// recurring task (on completion it inserts the next uncompleted copy above
+    /// the now-completed line). If both copies shared the same obsidianId, one
+    /// would silently overwrite the other in the in-memory map, causing missed
+    /// occurrences and duplicates during sync (#57). Including lineNumber for
+    /// recurring tasks gives each copy a distinct ID.
+    func testRecurringTaskIdsIncludeLineNumber() {
+        let completedCopy = SyncTask(
+            title: "Pay rent",
+            isCompleted: true,
+            obsidianSource: SyncTask.ObsidianSource(
+                filePath: "/test.md",
+                lineNumber: 10,
+                originalLine: "- [x] Pay rent 🔁 every month 📅 2026-01-01 ✅ 2026-01-15"
+            ),
+            recurrenceRule: "🔁 every month"
+        )
+        let newUncompletedCopy = SyncTask(
+            title: "Pay rent",
+            isCompleted: false,
+            obsidianSource: SyncTask.ObsidianSource(
+                filePath: "/test.md",
+                lineNumber: 9,  // Inserted just above the completed one
+                originalLine: "- [ ] Pay rent 🔁 every month 📅 2026-02-01"
+            ),
+            recurrenceRule: "🔁 every month"
+        )
+
+        let completedId = SyncState.generateObsidianId(task: completedCopy)
+        let newId = SyncState.generateObsidianId(task: newUncompletedCopy)
+
+        XCTAssertNotEqual(
+            completedId, newId,
+            "Recurring task occurrences at different lines must get distinct IDs — otherwise they collide in the sync map (#57)"
+        )
+    }
+
+    /// Non-recurring tasks with the same content must still collapse to the same ID
+    /// even at different lines — otherwise normal reordering would break sync mappings.
+    func testNonRecurringTaskIdsDoNotIncludeLineNumber() {
+        let task1 = SyncTask(
+            title: "Buy milk",
+            obsidianSource: SyncTask.ObsidianSource(
+                filePath: "/test.md",
+                lineNumber: 5,
+                originalLine: "- [ ] Buy milk"
+            )
+            // recurrenceRule is nil
+        )
+        let task2 = SyncTask(
+            title: "Buy milk",
+            obsidianSource: SyncTask.ObsidianSource(
+                filePath: "/test.md",
+                lineNumber: 42,
+                originalLine: "- [ ] Buy milk"
+            )
+        )
+        XCTAssertEqual(
+            SyncState.generateObsidianId(task: task1),
+            SyncState.generateObsidianId(task: task2),
+            "Non-recurring tasks must keep stable IDs across reordering"
+        )
     }
 
     // MARK: - Task Hash
