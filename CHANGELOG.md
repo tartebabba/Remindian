@@ -4,6 +4,17 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.6.2 (April 2026)
+
+### Bug Fixes
+- **Things 3 task creation failed with 2+ tags** — AppleScript error `-1700` was returned when creating a to-do with 2 or more tags, because `tag names:{"a", "b"}` (list syntax) fails Things 3's coercion — the scripting dictionary declares `tag names` as TEXT. Both `createTask` and `createTasksBatch` now emit comma-separated string form (`tag names:"a, b"`). A single-tag task worked by accidental coercion, which is why this wasn't caught earlier. Without this fix, multi-tag tasks were silently dropped and accumulated as duplicates on subsequent syncs. Huge thanks to @joscdk (Jonas Schwartz) who diagnosed the root cause, provided a standalone AppleScript reproduction, and submitted the fix in PR #60. (#59)
+- **"Task already deleted" no longer surfaces as sync error** — `deleteTask()` now swallows AppleScript error `-1728` (task ID not found). If the Things 3 task was removed by the user between fetches, that's a no-op, not a failure. Also from @joscdk's PR #60. (#59)
+
+### Tests
+- Added `Things3DestinationTests` covering multi-tag AppleScript property generation, leaf extraction for hierarchical tags, deduplication, and quote escaping — prevents regression of the tag-syntax bug fixed in PR #60.
+
+---
+
 ## v5.6.1 (April 2026)
 
 ### Bug Fixes

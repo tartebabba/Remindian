@@ -26,7 +26,7 @@ class Things3Destination: TaskDestination {
     /// For hierarchical tags like "person/name", the URL scheme needs just the
     /// leaf component ("name") — Things 3 resolves the hierarchy natively.
     /// Sending the full path gets percent-encoded (person%2Fname) and won't match.
-    private func cleanTagsForThings(_ tags: [String]) -> [String] {
+    internal func cleanTagsForThings(_ tags: [String]) -> [String] {
         var cleaned: [String] = []
         var seen = Set<String>()
         for tag in tags {
@@ -38,6 +38,21 @@ class Things3Destination: TaskDestination {
             cleaned.append(leaf)
         }
         return cleaned
+    }
+
+    /// Build the `tag names:"..."` AppleScript property fragment for Things 3.
+    /// Returns an empty string when there are no tags.
+    ///
+    /// See #59: Things 3's scripting dictionary declares `tag names` as TEXT, so
+    /// list syntax (`{"a", "b"}`) fails with error -1700 when 2+ tags are present.
+    /// Always use comma-separated string form. Fix by @joscdk in PR #60.
+    internal func buildTagNamesProperty(tags: [String]) -> String {
+        let tagNames = cleanTagsForThings(tags)
+        guard !tagNames.isEmpty else { return "" }
+        let tagString = tagNames
+            .map { $0.replacingOccurrences(of: "\"", with: "\\\"") }
+            .joined(separator: ", ")
+        return "tag names:\"\(tagString)\""
     }
 
     // Cache for performance
@@ -189,16 +204,11 @@ class Things3Destination: TaskDestination {
         if task.isCompleted {
             properties += ", status:completed"
         }
-        // Embed tags directly in AppleScript properties (#speed)
-        // Things 3's `tag names` property is declared as text — a comma-separated
-        // string, not an AppleScript list. Passing `{"a","b"}` fails with -1700
-        // `Can't make {...} into type text` when the list has 2+ elements.
-        if !task.tags.isEmpty {
-            let tagNames = cleanTagsForThings(task.tags)
-            let tagString = tagNames
-                .map { $0.replacingOccurrences(of: "\"", with: "\\\"") }
-                .joined(separator: ", ")
-            properties += ", tag names:\"\(tagString)\""
+        // Embed tags directly in AppleScript properties (#speed).
+        // See buildTagNamesProperty — text form, not list, per #59 fix (@joscdk).
+        let tagProp = buildTagNamesProperty(tags: task.tags)
+        if !tagProp.isEmpty {
+            properties += ", \(tagProp)"
         }
 
         // Build a locale-independent due date setter using AppleScript date components
@@ -278,15 +288,11 @@ class Things3Destination: TaskDestination {
                 properties += ", status:completed"
             }
 
-            // Embed tags directly in AppleScript to avoid per-task URL scheme calls (#speed)
-            // See comment on single-task createTask: `tag names` requires a text
-            // value, not an AppleScript list.
-            if !task.tags.isEmpty {
-                let tagNames = cleanTagsForThings(task.tags)
-                let tagString = tagNames
-                    .map { $0.replacingOccurrences(of: "\"", with: "\\\"") }
-                    .joined(separator: ", ")
-                properties += ", tag names:\"\(tagString)\""
+            // Embed tags directly in AppleScript to avoid per-task URL scheme calls (#speed).
+            // See buildTagNamesProperty — text form, not list, per #59 fix (@joscdk).
+            let tagProp = buildTagNamesProperty(tags: task.tags)
+            if !tagProp.isEmpty {
+                properties += ", \(tagProp)"
             }
 
             scriptLines.append("    set newTodo to make new to do with properties {\(properties)}")
