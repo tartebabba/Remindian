@@ -66,9 +66,18 @@ class SyncManager: ObservableObject {
     // MARK: - Initialization
 
     private init() {
+        // Per-step instrumentation so if we ever crash during init again we'll see
+        // exactly which step failed in the debug log (see #58). Each step is
+        // self-contained — if one does something unexpected on a user's machine,
+        // the previous debugLog will still have been flushed.
+        debugLog("[SyncManager.init] start")
+
         let loadedConfig = SyncConfiguration.load()
+        debugLog("[SyncManager.init] config loaded: source=\(loadedConfig.taskSourceType), destination=\(loadedConfig.taskDestinationType), vaultPath='\(loadedConfig.vaultPath)'")
         self.config = loadedConfig
+
         self.syncLog = SyncLog.load()
+        debugLog("[SyncManager.init] sync log loaded")
 
         // Initialize source and destination from config
         let src = SyncManager.createSource(for: loadedConfig.taskSourceType, config: loadedConfig)
@@ -76,11 +85,19 @@ class SyncManager: ObservableObject {
         self.taskSource = src
         self.taskDestination = dst
         self.syncEngine = SyncEngine(source: src, destination: dst)
+        debugLog("[SyncManager.init] engine ready")
 
         setupAutoSync()
+        debugLog("[SyncManager.init] auto-sync configured")
+
         setupConfigObserver()
+        debugLog("[SyncManager.init] config observer attached")
+
         setupAppearanceObserver()
+        debugLog("[SyncManager.init] appearance observer attached")
+
         setupOAuthObserver()
+        debugLog("[SyncManager.init] OAuth observer attached — init complete")
     }
 
     // MARK: - Source/Destination Factory
@@ -192,10 +209,17 @@ class SyncManager: ObservableObject {
     }
 
     private func setupAppearanceObserver() {
-        // Observe system appearance changes to update the dock icon
-        appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
-            Task { @MainActor in
-                self?.refreshDockIcon()
+        // Observe system appearance changes to update the dock icon.
+        // Defer the KVO attachment to the next run loop: during initial launch,
+        // SwiftUI can resolve the @StateObject very early in the app lifecycle,
+        // and attaching KVO observers to NSApp before the delegate finishes
+        // initializing has caused SIGTRAPs on some systems (#58).
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.appearanceObservation = NSApp.observe(\.effectiveAppearance) { [weak self] _, _ in
+                Task { @MainActor in
+                    self?.refreshDockIcon()
+                }
             }
         }
     }
@@ -361,7 +385,10 @@ class SyncManager: ObservableObject {
 
         guard config.enableAutoSync else { return }
 
-        let interval = TimeInterval(config.syncIntervalMinutes * 60)
+        // Clamp to a sane minimum so a corrupt persisted config (e.g. 0 or negative)
+        // can't schedule a timer that fires continuously and burns CPU (#58-adjacent).
+        let minutes = max(1, config.syncIntervalMinutes)
+        let interval = TimeInterval(minutes * 60)
         syncTimer = Timer.scheduledTimer(withTimeInterval: interval, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 await self?.performSync()
