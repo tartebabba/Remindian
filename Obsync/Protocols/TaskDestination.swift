@@ -1,7 +1,9 @@
 import Foundation
 
 /// Protocol for task destinations — where tasks are synced to (Apple Reminders, Things 3, etc.)
-protocol TaskDestination {
+/// Class-bound so mutable reference semantics (e.g. `progressCallback`) work
+/// through the protocol type without forcing each conformer to be a struct.
+protocol TaskDestination: AnyObject {
     /// Human-readable name for this destination (e.g., "Apple Reminders", "Things 3")
     var destinationName: String { get }
 
@@ -30,4 +32,19 @@ protocol TaskDestination {
 
     /// Refresh the destination's internal state (e.g., after external changes).
     func refresh()
+
+    /// Optional progress callback invoked during long-running operations (e.g.
+    /// per-list fetching). Set by the sync engine before calling `fetchAllTasks`
+    /// so the UI can show granular progress (e.g. "Fetching Things 3 (Today)…"
+    /// then "Fetching Things 3 (Inbox)…"). Destinations that don't implement
+    /// granular progress can ignore this.
+    var progressCallback: ((String) -> Void)? { get set }
+}
+
+/// Default no-op implementation so existing destinations don't need to opt in.
+extension TaskDestination {
+    var progressCallback: ((String) -> Void)? {
+        get { nil }
+        set { /* default no-op */ }
+    }
 }

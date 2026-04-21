@@ -4,6 +4,21 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.7.1 (April 2026)
+
+### Things 3 sync resilience (#56 follow-up)
+
+Follow-up to feedback from @EPenR: when one Things 3 list is slow or unresponsive, sync was aborting the entire fetch — including the 4 other active lists and the Logbook — leaving the user with no data and a generic 30s-timeout error. It was also impossible to tell *which* list was stalling since the UI just said "Fetching from Things 3…" for the whole operation.
+
+- **Per-list progress in the UI** — `"Fetching Things 3 (Today)…"`, `"Fetching Things 3 (Inbox)…"`, `"Fetching Things 3 (Logbook, last 7 days)…"`. You now see which list is in flight and can tell immediately where a stall is happening.
+- **Continue on individual list timeout** — if `Today` times out, Remindian logs the failure and moves on to `Inbox`, `Anytime`, `Upcoming`, `Someday`, and the Logbook. Partial data is strictly better than no data. The skipped lists are surfaced as individual warnings in the sync result, not a single fatal error.
+- **Per-list timing in debug.log** — each fetch logs its duration (e.g. `[Things3] Fetched 42 tasks from 'Today' in 2.34s`), so `~/Library/Application Support/Remindian/debug.log` pinpoints stalls. Failed lists log how long they waited before timing out.
+- **New `progressCallback` on `TaskDestination` protocol** — allows destinations that do multi-step work to surface granular progress; other destinations inherit a no-op default.
+
+Thanks @EPenR for the detailed testing and follow-up on #56.
+
+---
+
 ## v5.7.0 (April 2026)
 
 ### Recurring tasks (#57 Phase A)

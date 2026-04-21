@@ -21,6 +21,17 @@ class Things3Destination: TaskDestination {
     /// The auth token from Things > Settings > General > Enable Things URLs > Manage
     var authToken: String = ""
 
+    /// Optional progress callback set by the sync engine. Called with short
+    /// human-readable strings during long-running fetch operations so the UI
+    /// can show which list is currently being processed (#56).
+    var progressCallback: ((String) -> Void)? = nil
+
+    /// Non-fatal errors encountered during the most recent `fetchAllTasks` call.
+    /// When an individual list times out, we skip it and continue with other
+    /// lists (partial sync is better than no sync). The sync engine reads this
+    /// after `fetchAllTasks` and surfaces the warnings without aborting. (#56)
+    private(set) var lastFetchWarnings: [Error] = []
+
     /// Clean tags for Things 3 — strip # prefix, extract leaf from hierarchy.
     /// Things 3 URL scheme requires tags to match existing tag titles exactly.
     /// For hierarchical tags like "person/name", the URL scheme needs just the
@@ -110,22 +121,63 @@ class Things3Destination: TaskDestination {
     // MARK: - Fetching
 
     func fetchAllTasks() async throws -> [SyncTask] {
+        // Reset warnings for this fetch cycle.
+        lastFetchWarnings = []
+
         var tasks: [SyncTask] = []
+        // Track per-list failures so we can surface a clear error after a
+        // successful partial sync. Before #56 follow-up, a single list timeout
+        // aborted the whole fetch and the user lost every list + Logbook.
+        // Now we continue with whatever lists respond and report the failures.
+        var listFailures: [(listName: String, error: Error)] = []
 
         // Fetch from active lists
         let activeLists = ["Today", "Inbox", "Anytime", "Upcoming", "Someday"]
         for listName in activeLists {
-            let listTasks = try await fetchTasksFromList(listName)
-            tasks.append(contentsOf: listTasks)
+            progressCallback?("Fetching Things 3 (\(listName))…")
+            let listStart = Date()
+            do {
+                let listTasks = try await fetchTasksFromList(listName)
+                let elapsed = Date().timeIntervalSince(listStart)
+                debugLog("[Things3] Fetched \(listTasks.count) tasks from '\(listName)' in \(String(format: "%.2f", elapsed))s")
+                tasks.append(contentsOf: listTasks)
+            } catch {
+                let elapsed = Date().timeIntervalSince(listStart)
+                debugLog("[Things3] Failed to fetch '\(listName)' after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
+                listFailures.append((listName: listName, error: error))
+                // Continue with other lists — partial data is better than none.
+            }
         }
 
         // Fetch recently completed tasks from Logbook.
-        // When a task is completed in Things 3, it moves to the Logbook.
-        // Without this, the sync engine sees the task as "deleted" and recreates it.
-        // We limit to the last 7 days to avoid fetching thousands of old completed tasks.
-        let logbookTasks = try await fetchRecentLogbookTasks(withinDays: 7)
-        tasks.append(contentsOf: logbookTasks)
-        debugLog("[Things3] Fetched \(logbookTasks.count) recently completed tasks from Logbook")
+        progressCallback?("Fetching Things 3 (Logbook, last 7 days)…")
+        let logbookStart = Date()
+        do {
+            let logbookTasks = try await fetchRecentLogbookTasks(withinDays: 7)
+            let elapsed = Date().timeIntervalSince(logbookStart)
+            debugLog("[Things3] Fetched \(logbookTasks.count) Logbook tasks in \(String(format: "%.2f", elapsed))s")
+            tasks.append(contentsOf: logbookTasks)
+        } catch {
+            let elapsed = Date().timeIntervalSince(logbookStart)
+            debugLog("[Things3] Failed to fetch Logbook after \(String(format: "%.2f", elapsed))s: \(error.localizedDescription)")
+            listFailures.append((listName: "Logbook", error: error))
+        }
+
+        // If every list failed, there's nothing to sync — surface the first error
+        // so the user sees a clear failure instead of a silent no-op.
+        if tasks.isEmpty, let first = listFailures.first {
+            throw first.error
+        }
+
+        // Partial success: store warnings so the sync engine can surface them
+        // (one per failed list) without aborting the whole sync.
+        if !listFailures.isEmpty {
+            let failedNames = listFailures.map { $0.listName }.joined(separator: ", ")
+            debugLog("[Things3] Partial fetch: \(listFailures.count) list(s) failed (\(failedNames)), \(tasks.count) tasks fetched from surviving lists.")
+            lastFetchWarnings = listFailures.map { failure in
+                Things3Error.listFetchFailed(listName: failure.listName, underlying: failure.error.localizedDescription)
+            }
+        }
 
         return tasks
     }
@@ -759,6 +811,7 @@ enum Things3Error: LocalizedError {
     case invalidURL
     case taskNotFound(String)
     case urlSchemeNotHandled
+    case listFetchFailed(listName: String, underlying: String)
 
     var errorDescription: String? {
         switch self {
@@ -778,6 +831,8 @@ enum Things3Error: LocalizedError {
             return "Could not find Things task: \(title)"
         case .urlSchemeNotHandled:
             return "Things 3 URL scheme failed. Make sure Things 3 is installed and the things:// URL scheme is registered."
+        case .listFetchFailed(let listName, let underlying):
+            return "Skipped Things 3 list '\(listName)' — sync continued with other lists. (\(underlying))"
         }
     }
 }

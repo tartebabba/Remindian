@@ -214,8 +214,33 @@ class SyncEngine {
             // Step 2: Get all tasks from destination
             onProgress?("Fetching from \(destination.destinationName)...")
             debugLog("[SyncEngine] Fetching from destination: \(destination.destinationName)...")
+
+            // Wire the granular progress callback so destinations that do
+            // per-list fetching (e.g. Things 3, which iterates Today/Inbox/
+            // Anytime/Upcoming/Someday/Logbook) can surface which list is in
+            // flight. Cleared after fetch to avoid holding a stale closure. (#56)
+            destination.progressCallback = onProgress
+            defer { destination.progressCallback = nil }
+
             var remindersTasks = try await destination.fetchAllTasks()
             debugLog("[SyncEngine] Found \(remindersTasks.count) destination tasks")
+
+            // Surface non-fatal per-list fetch warnings from the destination
+            // (e.g. a single Things 3 list timed out but the rest succeeded).
+            // These appear in the sync result errors so the user knows which
+            // list was skipped without the sync being marked as a total failure.
+            if let things3 = destination as? Things3Destination,
+               !things3.lastFetchWarnings.isEmpty {
+                for warning in things3.lastFetchWarnings {
+                    result.errors.append(warning)
+                    result.details.append(SyncLogDetail(
+                        action: .skipped,
+                        taskTitle: "List fetch",
+                        filePath: nil,
+                        errorMessage: warning.localizedDescription
+                    ))
+                }
+            }
 
             // Build a set of already-mapped destination task IDs so we never
             // filter them out. This is important for completed tasks that moved
