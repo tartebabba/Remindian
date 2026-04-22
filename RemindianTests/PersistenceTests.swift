@@ -66,6 +66,51 @@ final class PersistenceTests: XCTestCase {
         XCTAssertNil(decoded, "Truncated JSON should fail to decode")
     }
 
+    /// v5.7.0 bumped the sync state schema from v7 to v8 (lineNumber added to
+    /// recurring task IDs, see #57). Decoding an older-version payload must
+    /// round-trip cleanly: mappings preserved for re-linking, version bumped.
+    /// Tied to the plan item for #58 — validate the init path survives schema
+    /// drift without crashing.
+    func testSyncStateV7PayloadDecodesCleanly() throws {
+        let v7JSON = """
+        {
+          "mappings": [
+            {
+              "obsidianId": "old-id",
+              "remindersId": "r-1",
+              "lastObsidianHash": "h-o",
+              "lastRemindersHash": "h-r",
+              "lastSyncDate": 1700000000
+            }
+          ],
+          "lastSyncDate": 1700000000,
+          "stateVersion": 7
+        }
+        """.data(using: .utf8)!
+
+        let decoded = try JSONDecoder().decode(SyncState.self, from: v7JSON)
+        XCTAssertEqual(decoded.mappings.count, 1)
+        XCTAssertEqual(decoded.mappings.first?.obsidianId, "old-id")
+        // Mappings preserved; the SyncEngine's re-linking logic will re-hash
+        // recurring tasks to their v8 IDs on first sync.
+    }
+
+    /// Payloads from state versions we don't explicitly migrate (older than v6)
+    /// should not crash — loading can return a fresh state via the SyncState.load
+    /// catch path, but at the minimum decoding the raw payload must succeed so
+    /// the reset path has something to work with.
+    func testSyncStateAncientVersionDecodesWithoutCrash() throws {
+        let v3JSON = """
+        {
+          "mappings": [],
+          "lastSyncDate": null,
+          "stateVersion": 3
+        }
+        """.data(using: .utf8)!
+
+        XCTAssertNoThrow(try JSONDecoder().decode(SyncState.self, from: v3JSON))
+    }
+
     // MARK: - SyncLog Round-Trip
 
     func testSyncLogEncodeDecode() {

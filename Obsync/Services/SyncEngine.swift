@@ -783,6 +783,18 @@ class SyncEngine {
                             score += 3
                         }
 
+                        // Bonus: matching recurrence rule (#57 Phase B).
+                        // When two tasks share the same title but only one is
+                        // the actual recurring instance, the recurrence rule
+                        // is a strong signal of identity. Compare semantically
+                        // so e.g. "every week" matches "🔁 every week".
+                        if RecurrenceConverter.rulesAreEquivalent(
+                            candidateTask.recurrenceRule,
+                            rTask.recurrenceRule
+                        ) && (candidateTask.recurrenceRule != nil || rTask.recurrenceRule != nil) {
+                            score += 7
+                        }
+
                         if score > bestScore {
                             bestScore = score
                             bestCandidateId = candidateId

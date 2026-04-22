@@ -507,6 +507,14 @@ extension SyncTask {
             startDate = Calendar.current.date(from: startComponents)
         }
         
+        // Read the first EKRecurrenceRule and convert to Obsidian-format rule
+        // string. Phase B (#57): lets recurring reminders originating in Apple
+        // Reminders propagate their rule into Obsidian on writeback.
+        let recurrenceRule: String? = {
+            guard let rule = reminder.recurrenceRules?.first else { return nil }
+            return RecurrenceConverter.format(rule: rule)
+        }()
+
         return SyncTask(
             title: reminder.title ?? "Untitled",
             isCompleted: reminder.isCompleted,
@@ -519,7 +527,8 @@ extension SyncTask {
             notes: reminder.notes,
             remindersId: reminder.calendarItemIdentifier,
             lastModified: reminder.lastModifiedDate ?? Date(),
-            url: reminder.url
+            url: reminder.url,
+            recurrenceRule: recurrenceRule
         )
     }
     
@@ -586,6 +595,19 @@ extension SyncTask {
 
         if isCompleted {
             reminder.completionDate = completedDate ?? Date()
+        }
+
+        // Recurrence rule (#57 Phase B) — convert our preserved Obsidian-format
+        // rule text into an EKRecurrenceRule and set it on the reminder. If the
+        // rule string can't be parsed (unsupported grammar), clear any existing
+        // rule rather than leaving stale state behind.
+        if let ruleText = recurrenceRule, let rule = RecurrenceConverter.parse(ruleText: ruleText) {
+            reminder.recurrenceRules = [rule]
+        } else {
+            // Drop any existing rules. (EventKit requires removing by instance.)
+            if let existing = reminder.recurrenceRules {
+                for r in existing { reminder.removeRecurrenceRule(r) }
+            }
         }
     }
 }

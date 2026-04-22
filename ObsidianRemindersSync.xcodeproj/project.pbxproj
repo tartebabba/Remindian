@@ -41,6 +41,7 @@
 		032 /* CalendarFeedDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 134; };
 		033 /* AsanaDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 135; };
 		034 /* LinearDestination.swift in Sources */ = {isa = PBXBuildFile; fileRef = 136; };
+		035 /* RecurrenceConverter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 137; };
 		T01 /* TaskParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T10; };
 		T02 /* DeduplicationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T11; };
 		T03 /* TaskNotesParserTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T12; };
@@ -48,6 +49,7 @@
 		T05 /* PersistenceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T14; };
 		T06 /* WritebackTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T15; };
 		T07 /* Things3DestinationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T16; };
+		T08 /* RecurrenceConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T17; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -98,6 +100,7 @@
 		134 /* CalendarFeedDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarFeedDestination.swift; sourceTree = "<group>"; };
 		135 /* AsanaDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AsanaDestination.swift; sourceTree = "<group>"; };
 		136 /* LinearDestination.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LinearDestination.swift; sourceTree = "<group>"; };
+		137 /* RecurrenceConverter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceConverter.swift; sourceTree = "<group>"; };
 		T00 /* RemindianTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RemindianTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		T10 /* TaskParserTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TaskParserTests.swift; sourceTree = "<group>"; };
 		T11 /* DeduplicationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeduplicationTests.swift; sourceTree = "<group>"; };
@@ -106,6 +109,7 @@
 		T14 /* PersistenceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PersistenceTests.swift; sourceTree = "<group>"; };
 		T15 /* WritebackTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WritebackTests.swift; sourceTree = "<group>"; };
 		T16 /* Things3DestinationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Things3DestinationTests.swift; sourceTree = "<group>"; };
+		T17 /* RecurrenceConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceConverterTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -197,6 +201,7 @@
 				121 /* FileWatcherService.swift */,
 				130 /* UpdaterService.swift */,
 				133 /* OAuthCallbackHandler.swift */,
+				137 /* RecurrenceConverter.swift */,
 				307 /* Sources */,
 				308 /* Destinations */,
 			);
@@ -245,6 +250,7 @@
 				T14 /* PersistenceTests.swift */,
 				T15 /* WritebackTests.swift */,
 				T16 /* Things3DestinationTests.swift */,
+				T17 /* RecurrenceConverterTests.swift */,
 			);
 			path = RemindianTests;
 			sourceTree = "<group>";
@@ -373,6 +379,7 @@
 				032 /* CalendarFeedDestination.swift in Sources */,
 				033 /* AsanaDestination.swift in Sources */,
 				034 /* LinearDestination.swift in Sources */,
+				035 /* RecurrenceConverter.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -387,6 +394,7 @@
 				T05 /* PersistenceTests.swift in Sources */,
 				T06 /* WritebackTests.swift in Sources */,
 				T07 /* Things3DestinationTests.swift in Sources */,
+				T08 /* RecurrenceConverterTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -540,7 +548,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.7.1;
+				MARKETING_VERSION = 5.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.remindian.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -568,7 +576,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.7.1;
+				MARKETING_VERSION = 5.8.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.remindian.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;

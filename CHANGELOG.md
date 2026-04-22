@@ -4,6 +4,30 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.8.0 (April 2026)
+
+### Recurring tasks — Phase B (#57)
+
+v5.7.0 fixed recurring tasks that originate in Obsidian (scenarios 1 & 2 of #57). This release closes the loop by reading and writing native `EKRecurrenceRule` on the Apple Reminders side, covering the remaining scenarios — recurring tasks that originate in Reminders sync correctly to Obsidian, and edits made on either side propagate.
+
+- **`RecurrenceConverter`** — new bidirectional converter between Obsidian Tasks rule strings (e.g. `"🔁 every week"`, `"every month on the 15th"`) and `EKRecurrenceRule`. Handles daily/weekly/monthly/yearly with arbitrary intervals, "on the Nth" for monthly, FE0F emoji variation selectors, and the plugin's `"when done"` suffix (which Apple handles natively via completion date).
+- **Reminders → SyncTask** — `SyncTask.fromReminder` now reads the first `EKRecurrenceRule` on a reminder and populates `recurrenceRule` with the equivalent Obsidian rule string. The Phase A line-number-aware ID logic and sibling-inheritance dedup then kick in, so recurring reminders stay correctly mapped through each occurrence.
+- **SyncTask → Reminders** — `applyToReminder` parses `recurrenceRule` back to an `EKRecurrenceRule` when writing. Unparseable rules clear existing rules instead of leaving stale state. Rules you write in Obsidian now become native repeating reminders in Apple Reminders.
+- **Hash includes recurrence** — `generateTaskHash` includes `recurrenceRule` so changing "every week" → "every 2 weeks" on either side is detected as a change and propagates via the normal writeback path.
+- **Re-linking prefers matching rules** — when the sync engine has to re-attach a reminder to an Obsidian task by title (e.g. after an ID format migration), matching recurrence rules now add a 7-point score bonus. Disambiguates cases where multiple tasks share a title but only one is the recurring instance.
+- **Grammar support**: `every day` · `every N days` · `every week` · `every N weeks` · `every month` · `every N months` · `every month on the Nth` · `every year` · `every N years`. More grammars can be added in future releases — unsupported strings are preserved as text and the existing completion-driven flow still works.
+
+### Tests
+
+- **`RecurrenceConverterTests`** — 27 unit tests covering parse, format, round-trip stability, ordinal rendering, FE0F tolerance, and semantic equivalence.
+- **`PersistenceTests` additions** — schema-drift regression tests: v7 state payloads decode cleanly into current runtime, ancient v3 payloads don't crash decoding. (Tied to the init-path hardening from #58.)
+
+### Thanks
+
+Continuing thanks to @isabellabrookes for the original 4-scenario breakdown on #57.
+
+---
+
 ## v5.7.1 (April 2026)
 
 ### Things 3 sync resilience (#56 follow-up)

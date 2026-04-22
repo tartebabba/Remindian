@@ -187,7 +187,11 @@ class SyncState: Codable {
             task.scheduledDate?.ISO8601Format() ?? "",
             task.completedDate?.ISO8601Format() ?? "",
             task.targetList ?? "",
-            task.tags.sorted().joined(separator: ",")
+            task.tags.sorted().joined(separator: ","),
+            // Include recurrence rule so changes to the rule (e.g. changing
+            // "every week" to "every 2 weeks" on either side) trigger a
+            // writeback to the other side. #57 Phase B.
+            task.recurrenceRule ?? ""
         ]
         return components.joined(separator: "|").data(using: .utf8)?.base64EncodedString() ?? ""
     }
