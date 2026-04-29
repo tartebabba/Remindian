@@ -59,9 +59,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         safeInit("File watcher") { SyncManager.shared.updateFileWatcher() }
         safeInit("Auto-updater") { _ = UpdaterService.shared }
 
-        // Request destination access on launch
+        // Request destination access on launch + auto-sync if configured.
+        // performLaunchSyncIfReady combines both so runtime config changes
+        // (which call requestDestinationAccess() directly) don't trigger
+        // a sync as a side effect. See #62.5.
         Task {
-            await SyncManager.shared.requestDestinationAccess()
+            await SyncManager.shared.performLaunchSyncIfReady()
         }
 
         // Keep the main SwiftUI window alive when closed (hide instead of release)

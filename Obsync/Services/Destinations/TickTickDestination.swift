@@ -193,7 +193,11 @@ class TickTickDestination: TaskDestination {
             return
         }
 
-        // Start local HTTP server to receive the callback
+        // Start local HTTP server to receive the callback.
+        // CRITICAL (#61): start() is now synchronous through bind+listen; we
+        // MUST NOT open the browser until it returns successfully, otherwise
+        // the OAuth redirect can race past the unbound port and the user
+        // sees ERR_CONNECTION_REFUSED.
         callbackServer = TickTickOAuthServer(port: Self.callbackPort) { [weak self] code in
             guard let self = self else { return }
             debugLog("[TickTick] OAuth code received via localhost callback")
@@ -203,7 +207,19 @@ class TickTickDestination: TaskDestination {
             // Server stops itself after receiving the code
             self.callbackServer = nil
         }
-        callbackServer?.start()
+        do {
+            try callbackServer?.start()
+        } catch {
+            debugLog("[TickTick] Could not start OAuth callback server: \(error.localizedDescription)")
+            callbackServer = nil
+            // Notify the UI so the user gets a real error instead of a silent failure.
+            NotificationCenter.default.post(
+                name: NSNotification.Name("TickTickOAuthServerStartFailed"),
+                object: nil,
+                userInfo: ["message": error.localizedDescription]
+            )
+            return
+        }
 
         let encodedRedirect = Self.redirectURI.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? Self.redirectURI
         let authURL = "https://ticktick.com/oauth/authorize?client_id=\(Self.clientId)&redirect_uri=\(encodedRedirect)&response_type=code&scope=tasks:read%20tasks:write"
@@ -419,9 +435,31 @@ private struct TickTickTokenResponse: Codable {
 
 // MARK: - Local OAuth Callback Server
 
+enum TickTickOAuthServerError: LocalizedError {
+    case socketCreationFailed
+    case bindFailed(errno: Int32)
+
+    var errorDescription: String? {
+        switch self {
+        case .socketCreationFailed:
+            return "Failed to create OAuth callback socket"
+        case .bindFailed(let err):
+            // EADDRINUSE = 48 on Darwin
+            let detail = String(cString: strerror(err))
+            return "Could not bind OAuth callback port: \(detail)"
+        }
+    }
+}
+
 /// Minimal HTTP server on localhost to receive the TickTick OAuth redirect.
 /// Listens on a fixed port, extracts the `code` query parameter, calls the
 /// completion handler, then shuts down.
+///
+/// IMPORTANT (#61): `start()` is synchronous up to the point the socket is
+/// bound and listening. Only the `accept()` loop runs on a background queue.
+/// The browser must NOT be opened until `start()` returns successfully —
+/// otherwise the OAuth redirect can race past the unbound port and the
+/// user sees `ERR_CONNECTION_REFUSED`.
 class TickTickOAuthServer {
     private var serverSocket: Int32 = -1
     private let port: UInt16
@@ -433,9 +471,14 @@ class TickTickOAuthServer {
         self.onCode = onCode
     }
 
-    func start() {
+    /// Bind + listen synchronously (so the caller knows the port is ready
+    /// before opening the browser), then dispatch the accept loop in the
+    /// background. Throws if socket creation or bind fails so the caller can
+    /// avoid opening the browser to a dead callback URL.
+    func start() throws {
+        try bindAndListen()
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.listen()
+            self?.acceptLoop()
         }
     }
 
@@ -447,11 +490,11 @@ class TickTickOAuthServer {
         }
     }
 
-    private func listen() {
+    private func bindAndListen() throws {
         serverSocket = socket(AF_INET, SOCK_STREAM, 0)
         guard serverSocket >= 0 else {
             debugLog("[TickTickOAuth] Failed to create socket")
-            return
+            throw TickTickOAuthServerError.socketCreationFailed
         }
 
         var opt: Int32 = 1
@@ -469,19 +512,23 @@ class TickTickOAuthServer {
         }
 
         guard bindResult == 0 else {
-            debugLog("[TickTickOAuth] Failed to bind to port \(port): \(String(cString: strerror(errno)))")
+            let savedErrno = errno
+            debugLog("[TickTickOAuth] Failed to bind to port \(port): \(String(cString: strerror(savedErrno)))")
             close(serverSocket)
-            return
+            serverSocket = -1
+            throw TickTickOAuthServerError.bindFailed(errno: savedErrno)
         }
 
         Darwin.listen(serverSocket, 1)
         listening = true
         debugLog("[TickTickOAuth] Listening on 127.0.0.1:\(port)")
 
-        // Set a timeout so we don't block forever
+        // Set a recv timeout so a hung browser doesn't block the accept loop forever.
         var timeout = timeval(tv_sec: 120, tv_usec: 0)
         setsockopt(serverSocket, SOL_SOCKET, SO_RCVTIMEO, &timeout, socklen_t(MemoryLayout<timeval>.size))
+    }
 
+    private func acceptLoop() {
         while listening {
             let clientSocket = accept(serverSocket, nil, nil)
             guard clientSocket >= 0 else { break }

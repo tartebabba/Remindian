@@ -424,7 +424,10 @@ struct ListMappingsView: View {
                 .foregroundColor(.secondary)
 
             List {
-                ForEach(Array(syncManager.config.listMappings.enumerated()), id: \.element.id) { index, mapping in
+                // Iterate the array directly (not an enumerated snapshot) so
+                // SwiftUI tracks the underlying @Published array and redraws
+                // when items are removed by id. (#62.3)
+                ForEach(syncManager.config.listMappings) { mapping in
                     HStack {
                         Text(mapping.obsidianTag.hasPrefix("+") ? mapping.obsidianTag : "#\(mapping.obsidianTag)")
                             .fontWeight(.medium)
@@ -438,7 +441,7 @@ struct ListMappingsView: View {
                         Spacer()
 
                         Button(action: {
-                            syncManager.removeListMapping(at: index)
+                            syncManager.removeListMapping(id: mapping.id)
                         }) {
                             Image(systemName: "trash")
                                 .foregroundColor(.red)
@@ -486,7 +489,8 @@ struct ListMappingsView: View {
                 .foregroundColor(.secondary)
 
             List {
-                ForEach(Array(syncManager.config.filePathMappings.enumerated()), id: \.element.id) { index, mapping in
+                // See note on listMappings ForEach above (#62.3).
+                ForEach(syncManager.config.filePathMappings) { mapping in
                     HStack {
                         Image(systemName: "doc.text")
                             .foregroundColor(.secondary)
@@ -505,7 +509,7 @@ struct ListMappingsView: View {
                         Spacer()
 
                         Button(action: {
-                            syncManager.removeFileMapping(at: index)
+                            syncManager.removeFileMapping(id: mapping.id)
                         }) {
                             Image(systemName: "trash")
                                 .foregroundColor(.red)
@@ -557,7 +561,8 @@ struct ListMappingsView: View {
                 .foregroundColor(.secondary)
 
             List {
-                ForEach(Array(syncManager.config.folderPathMappings.enumerated()), id: \.element.id) { index, mapping in
+                // See note on listMappings ForEach above (#62.3).
+                ForEach(syncManager.config.folderPathMappings) { mapping in
                     HStack {
                         Image(systemName: "folder.fill")
                             .foregroundColor(.secondary)
@@ -576,7 +581,7 @@ struct ListMappingsView: View {
                         Spacer()
 
                         Button(action: {
-                            syncManager.removeFolderMapping(at: index)
+                            syncManager.removeFolderMapping(id: mapping.id)
                         }) {
                             Image(systemName: "trash")
                                 .foregroundColor(.red)

@@ -226,6 +226,12 @@ class SyncManager: ObservableObject {
 
     // MARK: - Access Request
 
+    /// Check destination access and refresh available lists. Pure: never
+    /// triggers a sync as a side effect. The launch-time auto-sync trigger
+    /// lives in `performLaunchSyncIfReady()` and is invoked explicitly by
+    /// the AppDelegate, NOT from this method. This separation prevents
+    /// runtime config changes (e.g. switching TaskNotes integration mode)
+    /// from accidentally firing a sync — see #62.5.
     func requestDestinationAccess() async {
         do {
             debugLog("[SyncManager] Requesting \(taskDestination.destinationName) access...")
@@ -234,20 +240,6 @@ class SyncManager: ObservableObject {
             if hasDestinationAccess {
                 refreshLists()
                 debugLog("[SyncManager] Available lists: \(availableLists)")
-
-                // Don't auto-sync on first launch before onboarding is complete (#25)
-                let hasOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
-                if !hasOnboarded {
-                    debugLog("[SyncManager] Sync on launch skipped: onboarding not completed yet")
-                    return
-                }
-
-                if config.syncOnLaunch && !config.vaultPath.isEmpty {
-                    debugLog("[SyncManager] Sync on launch triggered")
-                    await performSync()
-                } else {
-                    debugLog("[SyncManager] Sync on launch skipped: syncOnLaunch=\(config.syncOnLaunch), vaultPath='\(config.vaultPath)'")
-                }
             }
         } catch {
             hasDestinationAccess = false
@@ -258,6 +250,31 @@ class SyncManager: ObservableObject {
                 showErrorMessage("Failed to get \(taskDestination.destinationName) access: \(error.localizedDescription)")
             }
         }
+    }
+
+    /// Launch-time auto-sync: requests destination access, then if everything
+    /// is configured (onboarded + valid vault + `syncOnLaunch` enabled),
+    /// triggers a sync. Called once from `AppDelegate.applicationDidFinishLaunching`.
+    /// (#62.5)
+    func performLaunchSyncIfReady() async {
+        await requestDestinationAccess()
+
+        guard hasDestinationAccess else { return }
+
+        // Don't auto-sync before onboarding is complete (#25)
+        let hasOnboarded = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+        guard hasOnboarded else {
+            debugLog("[SyncManager] Sync on launch skipped: onboarding not completed yet")
+            return
+        }
+
+        guard config.syncOnLaunch, !config.vaultPath.isEmpty else {
+            debugLog("[SyncManager] Sync on launch skipped: syncOnLaunch=\(config.syncOnLaunch), vaultPath='\(config.vaultPath)'")
+            return
+        }
+
+        debugLog("[SyncManager] Sync on launch triggered")
+        await performSync()
     }
 
     // MARK: - Sync Operations
@@ -532,6 +549,14 @@ class SyncManager: ObservableObject {
         config.listMappings.remove(at: index)
     }
 
+    /// Remove by stable id. Preferred over `removeListMapping(at:)` because it
+    /// pairs with a `ForEach(syncManager.config.listMappings)` (no enumerated
+    /// snapshot), which lets SwiftUI observe the underlying @Published array
+    /// and redraw immediately. See #62.3.
+    func removeListMapping(id: UUID) {
+        config.listMappings.removeAll { $0.id == id }
+    }
+
     func addFileMapping(filePath: String, remindersList: String) {
         let mapping = SyncConfiguration.FileMapping(
             filePath: filePath,
@@ -545,6 +570,10 @@ class SyncManager: ObservableObject {
         config.filePathMappings.remove(at: index)
     }
 
+    func removeFileMapping(id: UUID) {
+        config.filePathMappings.removeAll { $0.id == id }
+    }
+
     func addFolderMapping(folderPath: String, remindersList: String) {
         let mapping = SyncConfiguration.FolderMapping(
             folderPath: folderPath,
@@ -556,6 +585,10 @@ class SyncManager: ObservableObject {
     func removeFolderMapping(at index: Int) {
         guard index < config.folderPathMappings.count else { return }
         config.folderPathMappings.remove(at: index)
+    }
+
+    func removeFolderMapping(id: UUID) {
+        config.folderPathMappings.removeAll { $0.id == id }
     }
 
     func updateDockIconVisibility() {

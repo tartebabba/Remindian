@@ -4,6 +4,27 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.8.1 (April 2026)
+
+### Bug Fixes
+
+- **TickTick OAuth: `ERR_CONNECTION_REFUSED` on 127.0.0.1 (#61).** Two-part root cause uncovered while investigating: (a) the local OAuth callback server's `start()` returned immediately and dispatched the bind+listen to a background queue, so the browser could redirect to the loopback port before it was bound; (b) the app sandbox was missing the `com.apple.security.network.server` entitlement, which prevented the server from binding at all on production builds. Fixed both: `start()` now binds and listens synchronously (and `throw`s on bind failure so we never open the browser to a dead callback URL); the missing entitlement is now declared. Thanks to @qbisz-io for the report.
+- **#62.1 — Hide Dock Icon: icon reappears after opening the main window.** `openMainWindow()` was unconditionally calling `NSApp.setActivationPolicy(.regular)`, overriding the `.accessory` policy set at launch. Now respects `config.hideDockIcon`.
+- **#62.2 — "Open Main Window" + "Settings…" duplicate.** Both menu items showed the same window since v5.4.0 unified Settings into the main window's TabView. Removed the redundant "Settings…" entry per the reporter's suggestion.
+- **#62.3 — Mappings trash button: stale UI.** `ForEach(Array(...enumerated()))` built against a snapshot, so SwiftUI didn't redraw when the underlying `@Published` array mutated. Refactored to `ForEach(syncManager.config.listMappings)` + `removeListMapping(id:)`. Same fix applied to file path and folder path mappings.
+- **#62.4 — Auto-sync ON by default.** New `SyncConfiguration` instances now default `enableAutoSync` to `false`. Existing users keep their persisted preference; only fresh installs pick up the new default. Aligns with the existing onboarding intent ("don't auto-sync before the user has reviewed mappings").
+- **#62.5 — HTTP API integration auto-fires on selection.** `requestDestinationAccess()` was triggering `performSync()` as a side effect when the user changed source/destination settings. Split the launch-time auto-sync into `performLaunchSyncIfReady()`, called once explicitly from `AppDelegate`. Runtime config changes now never trigger sync as a side effect.
+
+### Tests
+
+- `TickTickOAuthServerTests` — 2 tests verifying the port is listening immediately after `start()` returns, and that `start()` throws cleanly when the port is already in use.
+
+### Thanks
+
+@qbisz-io for #61, @fnsign for the detailed #62 breakdown.
+
+---
+
 ## v5.8.0 (April 2026)
 
 ### Recurring tasks — Phase B (#57)

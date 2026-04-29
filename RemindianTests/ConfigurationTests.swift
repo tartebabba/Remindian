@@ -10,7 +10,9 @@ final class ConfigurationTests: XCTestCase {
 
         XCTAssertEqual(config.vaultPath, "")
         XCTAssertEqual(config.syncIntervalMinutes, 5)
-        XCTAssertTrue(config.enableAutoSync)
+        // Default OFF since v5.8.1 — fresh installs don't start syncing
+        // automatically before the user has set up mappings (#62.4).
+        XCTAssertFalse(config.enableAutoSync)
         XCTAssertTrue(config.syncOnLaunch)
         XCTAssertEqual(config.defaultList, "Reminders")
         XCTAssertTrue(config.excludedFolders.contains(".obsidian"))

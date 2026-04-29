@@ -117,12 +117,12 @@ struct MenuBarView: View {
                 Divider()
             }
 
-            // Settings & Quit
+            // Settings & Quit.
+            // Note: "Settings…" used to live next to "Open Main Window" but
+            // since v5.4.0 unified Settings into the main window's TabView,
+            // both items showed the exact same window. Removed the redundant
+            // entry per #62.2 (fnsign).
             menuButton("Open Main Window", icon: "macwindow") {
-                openMainWindow()
-            }
-
-            menuButton("Settings...", icon: "gear") {
                 openMainWindow()
             }
 
@@ -182,7 +182,13 @@ struct MenuBarView: View {
     }
 
     private func openMainWindow() {
-        NSApp.setActivationPolicy(.regular)
+        // Honor the user's "Hide dock icon" preference (#62.1). Forcing
+        // `.regular` here previously made the dock icon reappear and persist
+        // even after the window closed. `.accessory` apps can still display
+        // and key windows just fine via `makeKeyAndOrderFront` + `activate`.
+        if !syncManager.config.hideDockIcon {
+            NSApp.setActivationPolicy(.regular)
+        }
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         // Find the main window by identifier (tagged in AppDelegate at launch).

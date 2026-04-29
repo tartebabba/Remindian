@@ -12,6 +12,13 @@
     <true/>
     <key>com.apple.security.network.client</key>
     <true/>
+    <!-- Required for the local OAuth callback server (TickTick + future
+         OAuth integrations). The server binds to 127.0.0.1:23847 to
+         receive the redirect from the browser. Without this entitlement,
+         bind() fails inside the sandbox and the user sees
+         ERR_CONNECTION_REFUSED. (#61) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
     <key>com.apple.security.automation.apple-events</key>
     <true/>
     <key>com.apple.security.temporary-exception.apple-events</key>

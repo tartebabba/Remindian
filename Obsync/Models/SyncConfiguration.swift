@@ -209,7 +209,11 @@ class SyncConfiguration: ObservableObject, Codable {
     init(
         vaultPath: String = "",
         syncIntervalMinutes: Int = 5,
-        enableAutoSync: Bool = true,
+        // Default OFF so a fresh install doesn't start mass-creating destination
+        // tasks before the user has reviewed mappings (#62.4). Existing users
+        // keep whatever they had persisted in their config — only fresh installs
+        // (or the in-memory default before first save) pick up the new default.
+        enableAutoSync: Bool = false,
         syncOnLaunch: Bool = true,
         listMappings: [ListMapping] = [],
         defaultList: String = "Reminders",
