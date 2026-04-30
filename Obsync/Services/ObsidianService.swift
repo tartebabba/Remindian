@@ -172,6 +172,15 @@ class ObsidianService {
 
         content += taskLine + "\n"
 
+        // Register self-modification BEFORE the write, so FileWatcher ignores
+        // the FSEvents notification we're about to generate. Without this, every
+        // append to /Inbox.md triggers the watcher's debounced sync callback,
+        // which runs another sync, which appends again — creating a runaway
+        // loop that ate one user's Inbox.md (regression: 2026-04-30). All other
+        // file-mutating methods in this service register before writing; the
+        // omission here was the bug.
+        FileWatcherService.shared.registerSelfModification(fileURL.path)
+
         try content.write(to: fileURL, atomically: true, encoding: .utf8)
 
         // Calculate the line number of the appended task

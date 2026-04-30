@@ -4,6 +4,31 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.8.2 (April 2026) — emergency fix
+
+### Critical bug fix: runaway duplication in `/Inbox.md`
+
+Users with `enableNewTaskWriteback = true` and recurring tasks in Apple Reminders saw their `/Inbox.md` accumulate dozens of duplicate completed task entries within minutes of each sync. Three independent defects compounded — fixing any one alone wouldn't have stopped the loop. All three are addressed.
+
+- **`SyncEngine.swift` step 6 — recurrence history was being written out as new tasks.** When you complete a recurring reminder in Apple Reminders, iOS marks that instance complete and creates a fresh occurrence with a brand-new `calendarItemIdentifier`. The old mapping pointed to the original id, so every fresh occurrence (and every historical completion) looked unmapped to the sync engine and got appended to `/Inbox.md`. The fix: skip the inbox append when the reminder's title already exists somewhere in the vault, and re-attach the unmapped reminder to the existing Obsidian task's id instead.
+- **`ObsidianService.appendTaskToInbox` — missing self-modification registration.** Every other file-mutating method in this service calls `FileWatcherService.shared.registerSelfModification(_:)` before writing. `appendTaskToInbox` was missing that call (it was the only such omission). Result: every append to `/Inbox.md` triggered the watcher's debounced sync callback, which ran another sync, which appended again. Compounded with the bug above, this created an unbounded duplication loop while the app was running. Now registered before write.
+- **`SyncEngine.swift` step 6 — `obsidianId` was unstable across the append/reparse round-trip.** The line written to disk includes `#<targetList>` (the reminder's list name as a tag), but the mapping was stored using `rTask`, which has `tags = []`. On the next vault scan, the parsed task has the tag in its tags array, so the generated id differs and the mapping orphans itself immediately. Now we re-parse the just-written line through `SyncTask.fromObsidianLine` and use the parsed task's id for the mapping — guaranteeing stability across syncs.
+
+If your `/Inbox.md` was affected, your file backups are in `~/Library/Application Support/Remindian/backups/` — the most recent backup before the duplicates started accumulating is your best restore point.
+
+### Tests
+
+- New `InboxWritebackRegressionTests` — 5 tests covering each defect independently:
+  - `testAppendTaskToInboxRegistersSelfModification` — verifies the `FileWatcherService` accessor reports the path as self-modified after `appendTaskToInbox` returns.
+  - `testAppendedLineParsesToStableObsidianId` — verifies the round-trip stability that step 6's mapping depends on.
+  - `testAppendedLineWithNoListProducesStableId` — same, edge case where the reminder has no list name.
+  - `testTitleIndexLookupHitsForExistingVaultTask` — verifies the dedup contract used by step 6 fires for the canonical recurrence-history scenario.
+  - `testTitleIndexMissesForGenuinelyNewReminder` — verifies genuinely new reminders aren't accidentally skipped.
+
+If any of these fail, the bug is back.
+
+---
+
 ## v5.8.1 (April 2026)
 
 ### Bug Fixes

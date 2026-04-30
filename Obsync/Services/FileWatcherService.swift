@@ -139,6 +139,15 @@ class FileWatcherService {
     var isWatching: Bool {
         return streamRef != nil
     }
+
+    /// Test accessor: returns true if the given file path is currently in the
+    /// self-modified set. Used by regression tests to verify that file-mutating
+    /// methods register before writing — see the v5.8.2 inbox-writeback fix.
+    func isMarkedSelfModified(_ filePath: String) -> Bool {
+        selfModifiedLock.lock()
+        defer { selfModifiedLock.unlock() }
+        return selfModifiedFiles.contains(filePath)
+    }
 }
 
 // MARK: - FSEvents C Callback

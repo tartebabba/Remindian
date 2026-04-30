@@ -1034,17 +1034,70 @@ class SyncEngine {
             if config.enableNewTaskWriteback && !remindersMap.isEmpty {
                 onProgress?("Writing back \(remindersMap.count) tasks to Obsidian...")
                 debugLog("[SyncEngine] Found \(remindersMap.count) unmatched Reminders tasks for inbox writeback")
+
+                // Build a title→obsidianId index of every task already in the vault.
+                // Used to skip the inbox append for reminders whose title already
+                // exists somewhere in Obsidian — this is the recurrence-history bug
+                // fix described below. Cheap to compute once vs. per-iteration scans.
+                var titleIndex: [String: String] = [:]
+                for (id, task) in obsidianMap {
+                    titleIndex[task.title] = id
+                }
+
                 for (remindersId, rTask) in remindersMap {
                     // Skip completed tasks unless configured to sync them
                     if rTask.isCompleted && !config.syncCompletedTasks { continue }
+
+                    // CRITICAL: skip reminders whose title already exists anywhere in
+                    // the vault. Without this, Apple Reminders' recurring-task history
+                    // (each completed occurrence has a fresh calendarItemIdentifier)
+                    // gets appended to /Inbox.md on every sync, creating runaway
+                    // duplicate accumulation. The reminder is already represented in
+                    // Obsidian — usually as a `🔁` recurring task in some other note —
+                    // and re-appending it adds noise. We attach the existing
+                    // obsidianId to the reminder's mapping instead so subsequent
+                    // syncs treat it as already-mapped. (regression: 2026-04-30)
+                    if let existingObsidianId = titleIndex[rTask.title] {
+                        if !config.dryRunMode,
+                           let matchedObsidianTask = obsidianMap[existingObsidianId] {
+                            syncState.addOrUpdateMapping(
+                                obsidianId: existingObsidianId,
+                                remindersId: remindersId,
+                                obsidianHash: SyncState.generateTaskHash(matchedObsidianTask),
+                                remindersHash: SyncState.generateTaskHash(rTask)
+                            )
+                        }
+                        debugLog("[SyncEngine] Skipping inbox writeback for \"\(rTask.title)\": title already exists in vault (mapped to existing task)")
+                        continue
+                    }
 
                     do {
                         if !config.dryRunMode {
                             let newSource = try source.appendNewTask(rTask, config: config)
 
-                            // Create a SyncTask with source info for mapping
-                            var mappedTask = rTask
-                            mappedTask.obsidianSource = newSource
+                            // Re-parse the actual line we just wrote so the stored
+                            // obsidianId matches what the next vault scan will produce.
+                            // Without this, the tag we add to the line (`#<list>`) makes
+                            // the reparsed task's id differ from rTask's id, orphaning
+                            // the mapping immediately. (regression: 2026-04-30)
+                            let parsedTask = SyncTask.fromObsidianLine(
+                                newSource.originalLine,
+                                filePath: newSource.filePath,
+                                lineNumber: newSource.lineNumber
+                            )
+
+                            // Use the parsed task if available; otherwise fall back to
+                            // rTask + source (preserves old behavior for edge cases
+                            // where parsing fails — e.g. a hypothetical title that
+                            // doesn't survive the round-trip).
+                            let mappedTask: SyncTask = {
+                                if let parsed = parsedTask {
+                                    return parsed
+                                }
+                                var t = rTask
+                                t.obsidianSource = newSource
+                                return t
+                            }()
 
                             let obsidianId = source.generateTaskId(for: mappedTask)
                             let hash = SyncState.generateTaskHash(mappedTask)
