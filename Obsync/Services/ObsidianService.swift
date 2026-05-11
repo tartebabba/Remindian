@@ -11,7 +11,13 @@ class ObsidianService {
     // MARK: - Reading Tasks
 
     /// Scan vault for all tasks matching the Obsidian Tasks format
-    func scanVault(at path: String, excludedFolders: [String], includedFolders: [String] = []) throws -> [SyncTask] {
+    func scanVault(
+        at path: String,
+        excludedFolders: [String],
+        includedFolders: [String] = [],
+        openMarkers: Set<Character> = SyncTask.defaultOpenMarkers,
+        completedMarkers: Set<Character> = SyncTask.defaultCompletedMarkers
+    ) throws -> [SyncTask] {
         let vaultURL = URL(fileURLWithPath: path)
         guard fileManager.fileExists(atPath: path) else {
             debugLog("[ObsidianService] Vault path does not exist: \(path)")
@@ -29,7 +35,12 @@ class ObsidianService {
 
         for fileURL in markdownFiles {
             do {
-                let fileTasks = try parseTasksFromFile(fileURL, vaultPath: path)
+                let fileTasks = try parseTasksFromFile(
+                    fileURL,
+                    vaultPath: path,
+                    openMarkers: openMarkers,
+                    completedMarkers: completedMarkers
+                )
                 tasks.append(contentsOf: fileTasks)
             } catch {
                 // Skip files that can't be read (e.g., deleted between scan and read,
@@ -43,9 +54,24 @@ class ObsidianService {
     }
 
     /// Parse tasks from a single markdown file.
+    ///
     /// Extracts frontmatter `client` property (e.g., `client: "[[Bodycare Travel]]"`) and
     /// passes it to each task as clientName.
-    func parseTasksFromFile(_ fileURL: URL, vaultPath: String) throws -> [SyncTask] {
+    ///
+    /// After per-line parsing, runs a **parent-tag inheritance pass**: an
+    /// indented child task without its own `targetList` inherits from the
+    /// nearest preceding less-indented parent. Without this, subtasks would
+    /// fall through to the default list because they have no tag of their
+    /// own — addressing the user pain reported in #66. Real parent/child
+    /// nesting at the destination (`EKReminder.parentItem`, TickTick
+    /// `parentId`, etc.) is a future phase; this is a behavioral compromise
+    /// that puts indented subtasks in the *same list* as their parent.
+    func parseTasksFromFile(
+        _ fileURL: URL,
+        vaultPath: String,
+        openMarkers: Set<Character> = SyncTask.defaultOpenMarkers,
+        completedMarkers: Set<Character> = SyncTask.defaultCompletedMarkers
+    ) throws -> [SyncTask] {
         let content = try String(contentsOf: fileURL, encoding: .utf8)
         let lines = content.components(separatedBy: "\n")
         let relativePath = fileURL.path.replacingOccurrences(of: vaultPath, with: "")
@@ -53,19 +79,79 @@ class ObsidianService {
         // Extract client name from YAML frontmatter
         let clientName = extractFrontmatterClient(from: content)
 
-        var tasks: [SyncTask] = []
+        // Pair each parsed task with the indent level of its source line so we
+        // can run parent-inheritance below. We can't store indent on SyncTask
+        // itself without bloating the model — local-only computation is fine.
+        var taggedTasks: [(indent: Int, task: SyncTask)] = []
 
         for (index, line) in lines.enumerated() {
-            if var task = SyncTask.fromObsidianLine(line, filePath: relativePath, lineNumber: index + 1) {
+            if var task = SyncTask.fromObsidianLine(
+                line,
+                filePath: relativePath,
+                lineNumber: index + 1,
+                openMarkers: openMarkers,
+                completedMarkers: completedMarkers
+            ) {
                 // Attach client name from frontmatter for work tasks
                 if clientName != nil {
                     task.clientName = clientName
                 }
-                tasks.append(task)
+                let indent = leadingWhitespaceCount(line)
+                taggedTasks.append((indent, task))
             }
         }
 
+        // Parent-tag inheritance pass (#66 Phase 1). For each task that has
+        // no explicit `targetList`, walk back through the in-order list to
+        // find the nearest preceding task with a strictly smaller indent
+        // level — that's the structural parent. Inherit its `targetList` and
+        // also append the parent's first tag so the child's writeback to
+        // disk doesn't lose the routing hint.
+        //
+        // Stack-based approach: maintain a stack of (indent, task) ancestors.
+        // For each new task, pop entries with indent >= current. The top of
+        // the stack (if any) is the parent. Constant amortized cost per task.
+        var ancestorStack: [(indent: Int, task: SyncTask)] = []
+        var tasks: [SyncTask] = []
+        tasks.reserveCapacity(taggedTasks.count)
+
+        for (indent, originalTask) in taggedTasks {
+            // Pop siblings/deeper-or-equal entries off the stack.
+            while let top = ancestorStack.last, top.indent >= indent {
+                ancestorStack.removeLast()
+            }
+
+            var task = originalTask
+            if task.targetList == nil, let parent = ancestorStack.last?.task {
+                task.targetList = parent.targetList
+                // Also inherit the parent's first tag so toObsidianLine
+                // preserves the routing hint on writeback. Avoid duplicate
+                // tags if the child somehow already had it.
+                if let parentTag = parent.tags.first,
+                   !task.tags.contains(parentTag) {
+                    task.tags.append(parentTag)
+                }
+            }
+
+            ancestorStack.append((indent, task))
+            tasks.append(task)
+        }
+
         return tasks
+    }
+
+    /// Count leading whitespace characters (tabs and spaces both count as 1
+    /// each — sufficient for relative depth comparison within a single file).
+    private func leadingWhitespaceCount(_ line: String) -> Int {
+        var count = 0
+        for ch in line {
+            if ch == " " || ch == "\t" {
+                count += 1
+            } else {
+                break
+            }
+        }
+        return count
     }
 
     /// Extract the `client` property from YAML frontmatter.
@@ -243,17 +329,29 @@ class ObsidianService {
             )
         }
 
-        // Safety: skip if task is already completed (prevents double-writes)
-        guard currentLine.contains("- [ ]") else {
-            debugLog("[ObsidianService] Task already completed, skipping: \(currentLine.prefix(80))")
+        // Safety: skip if task is already completed (prevents double-writes).
+        //
+        // We look at the actual checkbox character — anything in the canonical
+        // completed-marker set (`x`/`X`) means done. Non-standard "open"
+        // markers like `/` (in progress), `?` (waiting), `<` (ready), or `-`
+        // (cancelled, sometimes used as completed) need to be re-checkable as
+        // complete; the old `contains("- [ ]")` check was too narrow. (#63)
+        guard let currentCheckbox = SyncTask.extractCheckbox(from: currentLine.trimmingCharacters(in: .whitespaces)) else {
+            debugLog("[ObsidianService] Line is not a task, skipping: \(currentLine.prefix(80))")
+            return 0
+        }
+        if SyncTask.defaultCompletedMarkers.contains(currentCheckbox.marker) {
+            debugLog("[ObsidianService] Task already completed (marker=[\(currentCheckbox.marker)]), skipping: \(currentLine.prefix(80))")
             return 0
         }
 
         var newLine = currentLine
 
-        // Surgical edit: replace ONLY "- [ ]" with "- [x]"
-        if let range = newLine.range(of: "- [ ]") {
-            newLine.replaceSubrange(range, with: "- [x]")
+        // Surgical edit: replace the existing marker character with `x`. Using
+        // a regex anchored at the first checkbox so we don't accidentally
+        // touch something later in the line that looks like a checkbox. (#63)
+        if let checkboxRange = newLine.range(of: "- [\(currentCheckbox.marker)]") {
+            newLine.replaceSubrange(checkboxRange, with: "- [x]")
         }
 
         // Append completion date if not already present
@@ -406,10 +504,11 @@ class ObsidianService {
 
         var newLine = currentLine
 
-        // Surgical edit: replace "- [x]" or "- [X]" with "- [ ]"
-        if let range = newLine.range(of: "- [x]") {
-            newLine.replaceSubrange(range, with: "- [ ]")
-        } else if let range = newLine.range(of: "- [X]") {
+        // Surgical edit: replace whatever the existing marker is with " "
+        // (open). Same widening as markTaskComplete — covers `[x]`, `[X]`,
+        // and any user-configured completed marker like `[-]`. (#63)
+        if let checkbox = SyncTask.extractCheckbox(from: currentLine.trimmingCharacters(in: .whitespaces)),
+           let range = newLine.range(of: "- [\(checkbox.marker)]") {
             newLine.replaceSubrange(range, with: "- [ ]")
         }
 

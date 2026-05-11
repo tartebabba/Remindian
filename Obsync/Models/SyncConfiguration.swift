@@ -80,6 +80,19 @@ class SyncConfiguration: ObservableObject, Codable {
     @Published var taskNotesOpenStatus: String  // Status to write when marking incomplete (default: "open")
     @Published var taskNotesDoneStatus: String  // Status to write when marking complete (default: "done")
 
+    // MARK: - Obsidian Tasks Custom Status Markers (#63)
+    //
+    // Single-character markers inside the checkbox brackets that classify a
+    // task as "open" or "completed". Mirrors the TaskNotes status mapping above.
+    //
+    // Default `[" "]` open / `["x", "X"]` completed matches the v5.8.x
+    // behavior exactly — existing users see no change. Users with the
+    // Obsidian Task-Board plugin can add `/`, `?`, `<` for "in progress",
+    // "waiting", "ready", and `-` for "cancelled" (typically mapped to
+    // completed). Each entry must be a single character.
+    @Published var obsidianTasksOpenMarkers: [String]
+    @Published var obsidianTasksCompletedMarkers: [String]
+
     // MARK: - TaskNotes Field Mapping (#19)
     @Published var taskNotesFieldMapping: TaskNotesFieldMapping  // Map YAML field names to Remindian properties
 
@@ -193,6 +206,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case taskNotesMtnPath, taskNotesApiUrl
         case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
+        case obsidianTasksOpenMarkers, obsidianTasksCompletedMarkers
         case taskNotesFieldMapping, taskNotesListField
         case filePathMappings
         case folderPathMappings
@@ -255,6 +269,8 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesCompletedStatuses: [String] = ["done", "completed", "cancelled"],
         taskNotesOpenStatus: String = "open",
         taskNotesDoneStatus: String = "done",
+        obsidianTasksOpenMarkers: [String] = [" "],
+        obsidianTasksCompletedMarkers: [String] = ["x", "X"],
         taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
         taskNotesListField: String = "tags",
         filePathMappings: [FileMapping] = [],
@@ -314,6 +330,8 @@ class SyncConfiguration: ObservableObject, Codable {
         self.taskNotesCompletedStatuses = taskNotesCompletedStatuses
         self.taskNotesOpenStatus = taskNotesOpenStatus
         self.taskNotesDoneStatus = taskNotesDoneStatus
+        self.obsidianTasksOpenMarkers = obsidianTasksOpenMarkers
+        self.obsidianTasksCompletedMarkers = obsidianTasksCompletedMarkers
         self.taskNotesFieldMapping = taskNotesFieldMapping
         self.taskNotesListField = taskNotesListField
         self.filePathMappings = filePathMappings
@@ -376,6 +394,10 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesCompletedStatuses = try container.decodeIfPresent([String].self, forKey: .taskNotesCompletedStatuses) ?? ["done", "completed", "cancelled"]
         taskNotesOpenStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesOpenStatus) ?? "open"
         taskNotesDoneStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesDoneStatus) ?? "done"
+        // Pre-v5.9.0 configs don't have these keys; default to the historical
+        // hardcoded behavior so existing users see zero behavior change. (#63)
+        obsidianTasksOpenMarkers = try container.decodeIfPresent([String].self, forKey: .obsidianTasksOpenMarkers) ?? [" "]
+        obsidianTasksCompletedMarkers = try container.decodeIfPresent([String].self, forKey: .obsidianTasksCompletedMarkers) ?? ["x", "X"]
         taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
         taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
         filePathMappings = try container.decodeIfPresent([FileMapping].self, forKey: .filePathMappings) ?? []
@@ -438,6 +460,8 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(taskNotesCompletedStatuses, forKey: .taskNotesCompletedStatuses)
         try container.encode(taskNotesOpenStatus, forKey: .taskNotesOpenStatus)
         try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)
+        try container.encode(obsidianTasksOpenMarkers, forKey: .obsidianTasksOpenMarkers)
+        try container.encode(obsidianTasksCompletedMarkers, forKey: .obsidianTasksCompletedMarkers)
         try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
         try container.encode(taskNotesListField, forKey: .taskNotesListField)
         try container.encode(filePathMappings, forKey: .filePathMappings)
@@ -506,17 +530,69 @@ class SyncConfiguration: ObservableObject, Codable {
     }
 
     /// Resolve the destination list for a task, checking all mapping sources in priority order:
-    /// 1. Explicit tag mapping (ListMapping)
+    /// 1. Explicit tag mapping (ListMapping) — tries the full hierarchical path
+    ///    first (e.g. `task/work`), then progressively trims back toward the
+    ///    root segment so a config for `task` still catches `#task/work` (#64).
     /// 2. File path mapping (FileMapping, #37)
-    /// 3. Auto-capitalize tag name
-    /// 4. Default list
-    func resolveTargetList(tag: String?, filePath: String?) -> String {
+    /// 3. Folder path mapping (FolderMapping, #40)
+    /// 4. Auto-capitalize tag name
+    /// 5. Default list
+    ///
+    /// - Parameters:
+    ///   - tag: The first-segment tag from a task (e.g. `task` for `#task/work`).
+    ///     This is what existing callers have historically passed. Used as the
+    ///     fallback after `tags` matching.
+    ///   - filePath: Vault-relative path of the source file.
+    ///   - tags: The task's full `tags` array (e.g. `["#task/work", "#urgent"]`).
+    ///     Used to try the most-specific hierarchical path first. Defaults to
+    ///     empty for callers that don't have access — the old `tag`-only path
+    ///     still works in that case. (#64)
+    func resolveTargetList(tag: String?, filePath: String?, tags: [String] = []) -> String {
         let cleanTag = {
             guard let tag = tag else { return "" }
             return (tag.hasPrefix("#") || tag.hasPrefix("+")) ? String(tag.dropFirst()) : tag
         }()
 
-        // 1. Check explicit tag mappings first
+        // 1a. Try most-specific hierarchical match across all of the task's
+        // tags. For each tag we walk from the full path down to the root,
+        // trimming `/<segment>` at a time. First mapping hit wins. (#64)
+        //
+        // Example: task with `tags = ["#task/work", "#urgent"]`
+        //   Try in order:
+        //     "task/work" → no match
+        //     "task"      → matches → use that mapping
+        //
+        // Example: task with `tags = ["#work/clients/somfy"]` and a mapping
+        // for `work/clients` → that exact mapping wins over the bare `work`.
+        for fullTag in tags {
+            let stripped = (fullTag.hasPrefix("#") || fullTag.hasPrefix("+"))
+                ? String(fullTag.dropFirst())
+                : fullTag
+            var candidate = stripped
+            while !candidate.isEmpty {
+                if let mapping = listMappings.first(where: {
+                    let mappingTag = ($0.obsidianTag.hasPrefix("#") || $0.obsidianTag.hasPrefix("+"))
+                        ? String($0.obsidianTag.dropFirst())
+                        : $0.obsidianTag
+                    return mappingTag.lowercased() == candidate.lowercased()
+                }) {
+                    return mapping.remindersList
+                }
+                // Trim the trailing `/segment`. If there's no `/`, exit so
+                // we don't infinite-loop on a single-segment tag (which is
+                // already handled by step 1b's exact-match fallback below).
+                if let slashIndex = candidate.lastIndex(of: "/") {
+                    candidate = String(candidate[..<slashIndex])
+                } else {
+                    break
+                }
+            }
+        }
+
+        // 1b. Fall back to the legacy `tag`-only check. Catches callers that
+        // didn't pass `tags` (test fixtures, edge paths) AND the case where
+        // the task's first-segment targetList differs from any entry in its
+        // tags array (shouldn't happen in practice, but defensive).
         if !cleanTag.isEmpty {
             if let mapping = listMappings.first(where: {
                 let mappingTag = ($0.obsidianTag.hasPrefix("#") || $0.obsidianTag.hasPrefix("+"))

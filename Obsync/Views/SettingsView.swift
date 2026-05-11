@@ -929,6 +929,69 @@ struct AdvancedSettingsView: View {
                         }
                         .padding(.leading, 20)
                     }
+
+                    // Custom status markers (#63). Lets users opt into the
+                    // Task-Board plugin's extended `[<]` / `[/]` / `[?]` /
+                    // `[-]` markers. Default config preserves v5.8.x behavior
+                    // — `[ ]` open and `[x]`/`[X]` completed — so this is
+                    // purely additive.
+                    Divider()
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Custom status markers")
+                            .font(.subheadline)
+                            .fontWeight(.medium)
+                        Text("Single characters inside `[ ]` that classify a task. Add markers from plugins like Task-Board. The standard `[ ]` open / `[x]` `[X]` completed are always recognized.")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+
+                        LabeledContent {
+                            TextField(" , /, ?, <", text: Binding(
+                                get: { syncManager.config.obsidianTasksOpenMarkers.joined(separator: ", ") },
+                                set: { newValue in
+                                    let parsed = newValue
+                                        .split(separator: ",", omittingEmptySubsequences: false)
+                                        .map { String($0).trimmingCharacters(in: .whitespaces) }
+                                        .filter { $0.count == 1 }
+                                    // Always ensure " " is included so users
+                                    // can't accidentally lock themselves out
+                                    // of the default open state.
+                                    var withDefault = parsed
+                                    if !withDefault.contains(" ") { withDefault.insert(" ", at: 0) }
+                                    syncManager.config.obsidianTasksOpenMarkers = withDefault
+                                }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 250)
+                        } label: {
+                            Text("Open markers")
+                        }
+
+                        LabeledContent {
+                            TextField("x, X, -", text: Binding(
+                                get: { syncManager.config.obsidianTasksCompletedMarkers.joined(separator: ", ") },
+                                set: { newValue in
+                                    let parsed = newValue
+                                        .split(separator: ",", omittingEmptySubsequences: false)
+                                        .map { String($0).trimmingCharacters(in: .whitespaces) }
+                                        .filter { $0.count == 1 }
+                                    // Always ensure "x" is included — same
+                                    // safety as above so the canonical
+                                    // completion marker can't be removed.
+                                    var withDefault = parsed
+                                    if !withDefault.contains("x") { withDefault.insert("x", at: 0) }
+                                    syncManager.config.obsidianTasksCompletedMarkers = withDefault
+                                }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 250)
+                        } label: {
+                            Text("Completed markers")
+                        }
+
+                        Text("Comma-separated single characters. Leave the leading entry as ` ` (space) to keep the standard checkbox open.")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                    }
                 }
             } header: {
                 Text("Sync Options")

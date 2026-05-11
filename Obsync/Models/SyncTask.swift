@@ -123,21 +123,79 @@ struct SyncTask: Identifiable, Equatable, Codable {
 // MARK: - Obsidian Tasks Format Parsing
 
 extension SyncTask {
+    /// Default open-status markers (the bracket content of `- [ ]`).
+    static let defaultOpenMarkers: Set<Character> = [" "]
+
+    /// Default completed-status markers (the bracket content of `- [x]` / `- [X]`).
+    static let defaultCompletedMarkers: Set<Character> = ["x", "X"]
+
+    /// Extract the checkbox from a trimmed task line.
+    ///
+    /// Recognizes any single character in the bracket (e.g. `- [ ]`, `- [x]`,
+    /// `- [/]`, `- [<]`, `- [-]`) followed by a space. Returns `nil` for
+    /// non-task lines, including wikilinks like `- [[Name]]` (caught by the
+    /// `[[` prefix check) and lines that don't start with `- [`.
+    ///
+    /// Used by `fromObsidianLine` and by surgical-edit code paths in
+    /// `ObsidianService` so we have one source of truth for what counts as a
+    /// task checkbox. Backwards-compatible: when called without explicit
+    /// marker sets the default `[" "]` open / `["x", "X"]` completed
+    /// classification matches v5.8.x behavior exactly. (#63)
+    static func extractCheckbox(from trimmed: String) -> (marker: Character, content: String)? {
+        // Reject wikilinks explicitly — `- [[Name]]` has `[` as marker but is
+        // not a task. The trailing `]] ` would match the regex below.
+        guard !trimmed.hasPrefix("- [[") else { return nil }
+
+        // Match `- [.] ` where `.` is any single character. Anchored at start.
+        guard trimmed.count >= 6,
+              trimmed.hasPrefix("- ["),
+              trimmed[trimmed.index(trimmed.startIndex, offsetBy: 4)] == "]",
+              trimmed[trimmed.index(trimmed.startIndex, offsetBy: 5)] == " "
+        else { return nil }
+
+        let marker = trimmed[trimmed.index(trimmed.startIndex, offsetBy: 3)]
+        let content = String(trimmed.dropFirst(6))
+        return (marker, content)
+    }
+
     /// Parse an Obsidian Tasks format line
     /// Format: - [x] Task title 📅 2024-01-15 🛫 2024-01-10 ⏫ #list-name #tag1 🔁 every week
     /// We parse EVERYTHING from Obsidian but may truncate for Reminders display
-    static func fromObsidianLine(_ line: String, filePath: String, lineNumber: Int) -> SyncTask? {
+    ///
+    /// - Parameters:
+    ///   - openMarkers: Single characters that count as "open / not done" inside
+    ///     the checkbox. Defaults to `[" "]` for backwards compatibility. The
+    ///     Obsidian Tasks plugin and extensions like Task-Board introduce
+    ///     additional markers (`[/]` in progress, `[?]` waiting, `[<]` ready);
+    ///     callers can opt in by passing them here. (#63)
+    ///   - completedMarkers: Single characters that count as "done / completed".
+    ///     Defaults to `["x", "X"]`. Callers can map cancelled (`[-]`) here too.
+    static func fromObsidianLine(
+        _ line: String,
+        filePath: String,
+        lineNumber: Int,
+        openMarkers: Set<Character> = defaultOpenMarkers,
+        completedMarkers: Set<Character> = defaultCompletedMarkers
+    ) -> SyncTask? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
-        
-        // Must start with a valid task checkbox: - [ ] or - [x] or - [X]
-        // This explicitly rejects wikilinks like "- [[Name]]" which start with "- [["
-        guard trimmed.hasPrefix("- [ ] ") || trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ") else { return nil }
 
-        // Check completion status
-        let isCompleted = trimmed.hasPrefix("- [x] ") || trimmed.hasPrefix("- [X] ")
+        // Use the shared checkbox extractor so the rules stay consistent with
+        // surgical-edit code (markTaskComplete, etc.). (#63)
+        guard let checkbox = extractCheckbox(from: trimmed) else { return nil }
 
-        // Extract the content after checkbox (skip "- [x] " = 6 characters)
-        var content = String(trimmed.dropFirst(6))
+        // Classify the marker. Unknown markers fall through to "open" — this
+        // is the safe choice (we'd rather show an unknown-status task than
+        // silently treat it as done and never sync it again).
+        let isCompleted: Bool
+        if completedMarkers.contains(checkbox.marker) {
+            isCompleted = true
+        } else if openMarkers.contains(checkbox.marker) {
+            isCompleted = false
+        } else {
+            isCompleted = false
+        }
+
+        var content = checkbox.content
         
         // Parse dates with emojis
         let dueDate = extractDate(from: &content, emoji: "📅")
@@ -207,16 +265,34 @@ extension SyncTask {
             content = plainRecRegex.stringByReplacingMatches(in: content, options: [], range: recRange, withTemplate: "")
         }
 
-        // Parse tags and find target list
-        // Supports hierarchical tags like #work/clients/somfy
-        // Also supports +prefix tags like +Project (#14)
+        // Parse tags and find target list.
+        //
+        // Supports hierarchical tags like #work/clients/somfy and +prefix tags
+        // like +Project (#14). The full hierarchical path is preserved in the
+        // `tags` array verbatim — the first segment is also extracted into
+        // `targetList` for list-routing convenience. Resolution of the full
+        // hierarchical mapping lives in `SyncConfiguration.resolveTargetList`.
+        //
+        // BEFORE matching tags, we compute "protected ranges" — substrings
+        // of the line where tag-like patterns must be ignored: URLs (so
+        // `#section` inside `https://example.com/#section` doesn't become a
+        // tag, #65), wikilinks (so `[[Note#header]]` doesn't either), and
+        // inline code spans. Tag matches whose start position falls inside
+        // any protected range are dropped.
         var tags: [String] = []
         var targetList: String? = nil
+        let protectedRanges = computeProtectedRanges(in: content)
         let tagRegex = try? NSRegularExpression(pattern: "[#+][\\w-]+(?:/[\\w-]+)*", options: [])
         let range = NSRange(content.startIndex..., in: content)
 
         if let matches = tagRegex?.matches(in: content, options: [], range: range) {
             for match in matches {
+                // Drop matches that overlap any protected range.
+                let isProtected = protectedRanges.contains { protected in
+                    NSIntersectionRange(match.range, protected).length > 0
+                }
+                if isProtected { continue }
+
                 if let tagRange = Range(match.range, in: content) {
                     let tag = String(content[tagRange])
                     tags.append(tag)
@@ -478,6 +554,48 @@ extension SyncTask {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
         return formatter.string(from: date)
+    }
+
+    /// Compute substrings of `content` that must be treated as opaque during
+    /// tag extraction. A tag-regex match whose start position falls inside
+    /// one of these ranges is dropped on the floor. (#65)
+    ///
+    /// Covers:
+    /// - HTTP/HTTPS URLs — stops at whitespace, `)`, or `]` so we handle bare
+    ///   URLs, Markdown links `[label](url)`, and trailing punctuation cleanly.
+    /// - Wikilinks `[[…]]` — header anchors like `#section` inside wikilinks
+    ///   were the secondary source of false-positive tags.
+    /// - Inline code spans `` `…` `` — defensive coverage for documentation
+    ///   that mentions tags like `` `#deprecated` ``.
+    ///
+    /// Returns an array of `NSRange`. Empty if the content has none.
+    static func computeProtectedRanges(in content: String) -> [NSRange] {
+        var ranges: [NSRange] = []
+        let nsRange = NSRange(content.startIndex..., in: content)
+
+        // URLs. The `[^\s)\]]+` body intentionally stops at whitespace, `)`
+        // (closes a Markdown link), and `]` (closes a wikilink's outer
+        // brackets if the URL is somehow inside one). Trailing punctuation
+        // like `.,;` is included in the URL — fine, since we only need
+        // start-position protection for tag matches, not exact URL bounds.
+        if let urlRegex = try? NSRegularExpression(pattern: "https?://[^\\s)\\]]+", options: []) {
+            ranges.append(contentsOf: urlRegex.matches(in: content, options: [], range: nsRange).map(\.range))
+        }
+
+        // Wikilinks. `[[anything-not-containing-]]]` — minimal but correct
+        // for our purpose (we only care that the header `#section` inside
+        // doesn't escape).
+        if let wikilinkRegex = try? NSRegularExpression(pattern: "\\[\\[[^\\]]*\\]\\]", options: []) {
+            ranges.append(contentsOf: wikilinkRegex.matches(in: content, options: [], range: nsRange).map(\.range))
+        }
+
+        // Inline code spans. Single backticks; we don't need to handle the
+        // pathological double-backtick case for our purposes.
+        if let codeRegex = try? NSRegularExpression(pattern: "`[^`]*`", options: []) {
+            ranges.append(contentsOf: codeRegex.matches(in: content, options: [], range: nsRange).map(\.range))
+        }
+
+        return ranges
     }
 }
 

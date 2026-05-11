@@ -4,6 +4,39 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.9.0 (May 2026)
+
+Four issues resolved, all reported on 2026-05-03 by @cjhille (a Task-Board / hierarchical-tag user). Shipped together because they share the same parser code surface and benefit from a coordinated release cycle.
+
+### Features
+
+- **Custom inline status markers (#63).** New `Settings → Sync Options → Custom status markers` configures which characters inside `[ ]` count as "open" or "completed". The standard `[ ]` (open) and `[x]`/`[X]` (completed) are always recognized. Plugins like Task-Board introduce additional markers: `[/]` in progress, `[?]` waiting, `[<]` ready, `[-]` cancelled. Add them via comma-separated single characters. Backwards-compatible: existing users with default config see zero behavior change. The completion-writeback path (`markTaskComplete` / `markTaskIncomplete`) now widens its replacement to handle any marker character, so marking a `[/]` task complete writes `[x]` (and removes the custom marker) rather than failing the "already complete" guard.
+
+### Bug fixes
+
+- **Hierarchical tag mapping (#64).** `resolveTargetList` now tries the most-specific hierarchical path first when matching against `listMappings`. For a task tagged `#task/work`, a mapping for `task/work` wins over a mapping for the bare `task`. Falls back to the root segment if there's no specific mapping (preserving legacy behavior). The full hierarchical path was already correctly preserved in the `tags` array — this fixes the routing side.
+- **URL fragment `#section` parsed as tag (#65).** The parser now computes "protected ranges" — substrings where tag-like patterns must be ignored: HTTP/HTTPS URLs, wikilinks `[[Note#header]]`, and inline code spans. Tag-regex matches whose start position falls inside any protected range are dropped. Markdown links `[label](url)` and bare URLs are both covered. Implementation is pure (no content mutation) for auditability.
+- **Subtask tag inheritance (#66 Phase 1).** Indented child tasks without their own `#tag` now inherit the `targetList` and routing tag from their nearest preceding less-indented parent. Implemented as a second pass over the parsed tasks in `ObsidianService.parseTasksFromFile` using a stack-based ancestor walk. Children with their own tag still win — inheritance only applies to untagged children. This solves the *list-routing* half of the subtask use case; real parent/child *nesting* at the destination (EKReminder `parentItem`, TickTick `parentId`, etc.) is a separate, larger feature deferred to a future release. Apple Reminders/EventKit notably does not expose a public parent/child API at all.
+
+### Tests
+
+- New `V5_9_0_RegressionTests` — 25 tests, one or more per issue, named to indicate which issue they guard (e.g. `test_65_urlWithHashFragmentNotParsedAsTag`). Includes the file-level integration tests for surgical edits on custom markers (#63), the resolution algorithm for hierarchical tags (#64), URL/wikilink/code-span protection (#65), and parent-tag inheritance with depth, siblings, and tagless-parent edge cases (#66).
+
+### Internal
+
+- `SyncTask.fromObsidianLine` gains optional `openMarkers` / `completedMarkers` parameters (default to the v5.8.x hardcoded sets, so existing call sites are untouched).
+- `SyncTask.extractCheckbox(from:)` helper — single source of truth for what counts as a task checkbox, used by both the parser and the surgical-edit code in `ObsidianService`.
+- `SyncTask.computeProtectedRanges(in:)` helper — exposed as `static` for unit testing and reuse.
+- `SyncConfiguration.resolveTargetList` gains an optional `tags:` parameter (default `[]`, so existing callers continue to work).
+- `ObsidianService.scanVault` / `parseTasksFromFile` gain optional marker-set parameters, threaded from `ObsidianTasksSource.scanTasks(config:)`.
+- `SyncConfiguration` gains `obsidianTasksOpenMarkers` / `obsidianTasksCompletedMarkers` (mirrors the existing `taskNotesCompletedStatuses` pattern). Defensive `decodeIfPresent` ensures pre-v5.9.0 config files load with the historical defaults.
+
+### Thanks
+
+@cjhille for filing four well-documented issues with screenshots in one day.
+
+---
+
 ## v5.8.2 (April 2026) — emergency fix
 
 ### Critical bug fix: runaway duplication in `/Inbox.md`

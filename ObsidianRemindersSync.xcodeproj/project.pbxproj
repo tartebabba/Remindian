@@ -52,6 +52,7 @@
 		T08 /* RecurrenceConverterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T17; };
 		T09 /* TickTickOAuthServerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T18; };
 		T0A /* InboxWritebackRegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T19; };
+		T0B /* V5_9_0_RegressionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = T1A; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -114,6 +115,7 @@
 		T17 /* RecurrenceConverterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecurrenceConverterTests.swift; sourceTree = "<group>"; };
 		T18 /* TickTickOAuthServerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TickTickOAuthServerTests.swift; sourceTree = "<group>"; };
 		T19 /* InboxWritebackRegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InboxWritebackRegressionTests.swift; sourceTree = "<group>"; };
+		T1A /* V5_9_0_RegressionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = V5_9_0_RegressionTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -257,6 +259,7 @@
 				T17 /* RecurrenceConverterTests.swift */,
 				T18 /* TickTickOAuthServerTests.swift */,
 				T19 /* InboxWritebackRegressionTests.swift */,
+				T1A /* V5_9_0_RegressionTests.swift */,
 			);
 			path = RemindianTests;
 			sourceTree = "<group>";
@@ -403,6 +406,7 @@
 				T08 /* RecurrenceConverterTests.swift in Sources */,
 				T09 /* TickTickOAuthServerTests.swift in Sources */,
 				T0A /* InboxWritebackRegressionTests.swift in Sources */,
+				T0B /* V5_9_0_RegressionTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -556,7 +560,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.8.2;
+				MARKETING_VERSION = 5.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.remindian.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
@@ -584,7 +588,7 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 5.8.2;
+				MARKETING_VERSION = 5.9.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.remindian.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_EMIT_LOC_STRINGS = YES;
