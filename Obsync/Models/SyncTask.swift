@@ -652,7 +652,14 @@ extension SyncTask {
     
     /// Apply task properties to an EKReminder.
     /// Title is clean (no hashtags). Client name added in notes for work tasks.
-    func applyToReminder(_ reminder: EKReminder, includeDueTime: Bool = false, addTaskLink: Bool = false, vaultPath: String = "") {
+    /// - Parameter appendLinkToNotes: When `true` AND `addTaskLink` is also
+    ///   true, the obsidian:// URL is appended to the reminder's notes body
+    ///   *in addition to* being set on `reminder.url`. Defaults to `false` to
+    ///   match the v5.10+ clean-notes behavior — Apple Reminders renders the
+    ///   URL field as a clickable icon, so the notes-side copy was just
+    ///   visual clutter (#69). Older clients that don't surface the URL
+    ///   field can opt back in via the corresponding Settings toggle.
+    func applyToReminder(_ reminder: EKReminder, includeDueTime: Bool = false, addTaskLink: Bool = false, vaultPath: String = "", appendLinkToNotes: Bool = false) {
         reminder.title = title
         reminder.isCompleted = isCompleted
         reminder.priority = priority.toRemindersPriority
@@ -698,11 +705,17 @@ extension SyncTask {
             let encodedFile = filePath.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? filePath
             let obsidianURL = "obsidian://open?vault=\(encodedVault)&file=\(encodedFile)"
 
-            // Set the URL field (clickable in Reminders.app and GoodTask)
+            // Set the URL field (clickable in Reminders.app and GoodTask).
+            // Apple Reminders surfaces this as a single clickable icon.
             reminder.url = URL(string: obsidianURL)
 
-            // Also keep in notes as fallback for apps that don't show the URL field
-            noteParts.append(obsidianURL)
+            // Optionally also append into notes as a fallback for older
+            // clients that don't display the URL field. Opt-in since v5.10.0
+            // (#69) — the historical default was always-append, which created
+            // a long percent-encoded line of noise in every reminder.
+            if appendLinkToNotes {
+                noteParts.append(obsidianURL)
+            }
         }
 
         if noteParts.isEmpty {

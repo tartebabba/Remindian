@@ -74,6 +74,14 @@ class SyncConfiguration: ObservableObject, Codable {
     @Published var syncedRemindersLists: [String]  // Empty = sync all lists, non-empty = only these lists
     @Published var excludedRemindersLists: [String]  // Lists to always exclude from sync (e.g., Groceries)
     @Published var addTaskLinkToReminders: Bool  // Add obsidian:// link to Reminders URL field
+    // Whether to ALSO append the obsidian:// URL into the reminder's notes
+    // body. Pre-v5.10 always did this as a "fallback for clients that don't
+    // show the URL field" — but Apple Reminders on macOS/iOS displays the URL
+    // field as a clean clickable Obsidian icon, and the long percent-encoded
+    // URL in notes was just visual clutter (#69). Defaults to `false`, so
+    // existing users get the cleaner display on their next sync; users who
+    // still want the notes-side fallback (e.g. for older clients) can re-enable.
+    @Published var appendTaskLinkToNotes: Bool
 
     // MARK: - TaskNotes Custom Status Mapping (#10)
     @Published var taskNotesCompletedStatuses: [String]  // Statuses that mean "completed" (e.g., ["done", "completed", "cancelled"])
@@ -204,7 +212,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case enableNotifications, globalHotKeyEnabled, globalHotKeyCode, globalHotKeyModifiers
         case taskSourceType, taskDestinationType, things3AuthToken, taskNotesFolder, taskNotesIntegrationMode
         case taskNotesMtnPath, taskNotesApiUrl
-        case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders
+        case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders, appendTaskLinkToNotes
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
         case obsidianTasksOpenMarkers, obsidianTasksCompletedMarkers
         case taskNotesFieldMapping, taskNotesListField
@@ -266,6 +274,7 @@ class SyncConfiguration: ObservableObject, Codable {
         excludedRemindersLists: [String] = [],
         excludedTags: [String] = [],
         addTaskLinkToReminders: Bool = true,
+        appendTaskLinkToNotes: Bool = false,
         taskNotesCompletedStatuses: [String] = ["done", "completed", "cancelled"],
         taskNotesOpenStatus: String = "open",
         taskNotesDoneStatus: String = "done",
@@ -327,6 +336,7 @@ class SyncConfiguration: ObservableObject, Codable {
         self.excludedRemindersLists = excludedRemindersLists
         self.excludedTags = excludedTags
         self.addTaskLinkToReminders = addTaskLinkToReminders
+        self.appendTaskLinkToNotes = appendTaskLinkToNotes
         self.taskNotesCompletedStatuses = taskNotesCompletedStatuses
         self.taskNotesOpenStatus = taskNotesOpenStatus
         self.taskNotesDoneStatus = taskNotesDoneStatus
@@ -391,6 +401,11 @@ class SyncConfiguration: ObservableObject, Codable {
         excludedRemindersLists = try container.decodeIfPresent([String].self, forKey: .excludedRemindersLists) ?? []
         excludedTags = try container.decodeIfPresent([String].self, forKey: .excludedTags) ?? []
         addTaskLinkToReminders = try container.decodeIfPresent(Bool.self, forKey: .addTaskLinkToReminders) ?? true
+        // Defaults to `false` for both fresh installs AND existing users
+        // upgrading from v5.9.x — the whole point of #69 is that the noisy
+        // URL-in-notes is opt-in going forward. Users who want it can toggle
+        // back on; otherwise the next sync rewrites notes without it. (#69)
+        appendTaskLinkToNotes = try container.decodeIfPresent(Bool.self, forKey: .appendTaskLinkToNotes) ?? false
         taskNotesCompletedStatuses = try container.decodeIfPresent([String].self, forKey: .taskNotesCompletedStatuses) ?? ["done", "completed", "cancelled"]
         taskNotesOpenStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesOpenStatus) ?? "open"
         taskNotesDoneStatus = try container.decodeIfPresent(String.self, forKey: .taskNotesDoneStatus) ?? "done"
@@ -457,6 +472,7 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(excludedRemindersLists, forKey: .excludedRemindersLists)
         try container.encode(excludedTags, forKey: .excludedTags)
         try container.encode(addTaskLinkToReminders, forKey: .addTaskLinkToReminders)
+        try container.encode(appendTaskLinkToNotes, forKey: .appendTaskLinkToNotes)
         try container.encode(taskNotesCompletedStatuses, forKey: .taskNotesCompletedStatuses)
         try container.encode(taskNotesOpenStatus, forKey: .taskNotesOpenStatus)
         try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)

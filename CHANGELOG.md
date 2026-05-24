@@ -4,6 +4,33 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.10.0 (May 2026)
+
+### Cleaner Obsidian URI handling in Apple Reminders (#69)
+
+Previously, when **Add task link to Reminders** was on, the `obsidian://` URL was written *both* into the reminder's native `url` field (where Apple Reminders renders it as a single clickable Obsidian icon) *and* appended into the reminder's notes body as a long percent-encoded line. The notes-side copy was visual clutter that obscured any real note content.
+
+v5.10 makes the notes-side append opt-in. New **Settings → Sync Options → Also append URL to notes (legacy clients)** toggle, indented under the existing **Add task link to Reminders**. Defaults to **off** — including for users upgrading from v5.9.x, who'll see cleaner reminders on their next sync without touching anything. If you use a client that doesn't display the URL field (some older third-party Reminders apps), re-enable the toggle and the notes-side fallback comes back.
+
+### Migration
+
+Existing serialized configs decode the new `appendTaskLinkToNotes` field as `false` via `decodeIfPresent`. The first sync after upgrade rewrites the notes of any synced reminder to remove the old URL line. This is reversible (toggle the option back on, sync again, the URL reappears) — and not destructive: only the URL line gets stripped, any other notes content is preserved.
+
+### Tests
+
+New `ObsidianURIHandlingTests` — 5 tests:
+- Clean-by-default: URL on `reminder.url`, NOT in notes.
+- Opt-in append: URL in both places.
+- No link at all when the master toggle is off.
+- Pre-v5.10 config decodes with clean default (migration safety).
+- Codable round-trip preserves the new toggle.
+
+### Thanks
+
+@Gouryella91 for the clear feature request with screenshots.
+
+---
+
 ## v5.9.1 (May 2026)
 
 ### Bug fix: `maxCompletedTaskAgeDays` not honored on writeback (#68)

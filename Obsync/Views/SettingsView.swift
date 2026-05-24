@@ -881,7 +881,18 @@ struct AdvancedSettingsView: View {
                 }
 
                 Toggle("Add task link to Reminders", isOn: $syncManager.config.addTaskLinkToReminders)
-                    .help("Adds an obsidian:// URL to the Reminders notes so you can jump to the task file")
+                    .help("Adds an obsidian:// URL to the reminder's native URL field — Apple Reminders shows it as a clickable Obsidian icon.")
+
+                // Secondary toggle, indented under the main one and only
+                // surfaced when the parent is enabled. Default off since v5.10
+                // (#69) — Apple Reminders renders the URL field cleanly so
+                // the notes-side copy was just visual clutter. Available for
+                // older clients that don't display URL fields.
+                if syncManager.config.addTaskLinkToReminders {
+                    Toggle("Also append URL to notes (legacy clients)", isOn: $syncManager.config.appendTaskLinkToNotes)
+                        .help("Duplicates the obsidian:// URL into the reminder's notes body. Off by default — only useful if you use a client that doesn't show the URL field.")
+                        .padding(.leading, 20)
+                }
 
                 Toggle("Dry run mode", isOn: $syncManager.config.dryRunMode)
                     .help("Shows what would change without making any actual changes")
