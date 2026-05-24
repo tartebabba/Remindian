@@ -4,6 +4,30 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.9.1 (May 2026)
+
+### Bug fix: `maxCompletedTaskAgeDays` not honored on writeback (#68)
+
+The age cutoff was only applied to the source scan (Step 1) and not to the Reminders → Obsidian writeback path (Step 6). Users with `enableNewTaskWriteback = true` and a long history of completed reminders in Apple Reminders saw every old completion written into their vault on the next sync — recreating the exact symptom that #11 was originally filed for.
+
+The fix extracts the source-side filter into two reusable static helpers (`SyncEngine.completedTaskCutoffDate(for:)` and `SyncEngine.isCompletedTaskTooOld(_:cutoff:)`) and applies them on both sides. In the writeback loop the age filter runs **after** the v5.8.2 title-dedup so the dedup's `syncState.addOrUpdateMapping(...)` side-effect is preserved for old reminders whose titles match an existing vault task.
+
+Also fixes a latent calendar-arithmetic fallback: the original `Calendar.date(byAdding:) ?? Date()` would have silently filtered every completed task if `byAdding:` returned nil. New fallback is `?? .distantPast`, which degrades to "keep everything" instead.
+
+### Internal
+
+- New designated `SyncEngine.init(source:destination:syncState:)` exposes the `SyncState` seam so tests can drive `performSync(...)` without touching the real Application Support directory. Production callers use the existing two-argument `convenience init` and are unaffected.
+
+### Tests
+
+- New `AgeFilterWritebackRegressionTests` — 9 tests total. 6 unit tests cover the helpers (boundary semantics, fallback to `lastModified`, disabled-setting short-circuit). 3 integration tests drive `performSync(...)` end-to-end with mock `TaskSource` / `TaskDestination` so the writeback call site itself is exercised — without these, a future refactor that inverted the `if` would pass the unit tests but reintroduce the bug. One integration test (`testWritebackPreservesDedupMappingForOldMatchedReminders`) specifically locks in the ordering with v5.8.2's title-dedup.
+
+### Thanks
+
+@mlsimon734 for filing the bug, doing the analysis, and submitting the PR — exemplary contribution.
+
+---
+
 ## v5.9.0 (May 2026)
 
 Four issues resolved, all reported on 2026-05-03 by @cjhille (a Task-Board / hierarchical-tag user). Shipped together because they share the same parser code surface and benefit from a coordinated release cycle.
