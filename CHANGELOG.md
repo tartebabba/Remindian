@@ -4,6 +4,26 @@ All notable changes to Remindian (formerly Obsync) are documented here.
 
 ---
 
+## v5.10.1 (May 2026)
+
+### Feature: Ignore specific status markers (#70)
+
+Builds on the v5.9.0 custom-status-marker work (#63). Some plugin workflows use checkbox-shaped lines that **aren't actually tasks** — for example `[i]` for informational entries inside a task list. Until now those would parse as tasks and sync as reminders, which wasn't what users wanted.
+
+New **Settings → Sync Options → Ignored markers** field. Comma-separated single characters: any line whose checkbox marker matches the set is dropped at the parser level — the sync engine never sees it.
+
+Precedence: if a user puts the same character in both the open/completed lists and the ignored list, **ignored wins**. That's the safer default ("don't touch this" beats "treat as open"). Empty by default; existing users see zero behavior change until they configure it.
+
+### Tests
+
+New `IgnoredMarkersRegressionTests` — 9 tests covering: marker returns nil, back-compat (same input without ignored config still parses), ignored-beats-open precedence, ignored-beats-completed precedence, normal `[ ]`/`[x]` still work when ignored is configured, multiple ignored markers all respected, end-to-end vault scan skips ignored lines, Codable round-trip, and pre-v5.10.1 config decodes with empty default.
+
+### Thanks
+
+@itauberg for the clear feature request.
+
+---
+
 ## v5.10.0 (May 2026)
 
 ### Cleaner Obsidian URI handling in Apple Reminders (#69)

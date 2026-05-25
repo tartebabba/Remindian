@@ -100,6 +100,13 @@ class SyncConfiguration: ObservableObject, Codable {
     // completed). Each entry must be a single character.
     @Published var obsidianTasksOpenMarkers: [String]
     @Published var obsidianTasksCompletedMarkers: [String]
+    // Markers that mean "this isn't a task at all — ignore the entire line".
+    // Used by plugin patterns like `[i]` for informational entries that look
+    // like checkbox lines but shouldn't sync as reminders (#70). Default empty
+    // — backwards-compatible. If a marker appears in both this list and one
+    // of the open/completed lists, ignored wins (safer default — see the
+    // tests in V5_10_1_IgnoredMarkersTests).
+    @Published var obsidianTasksIgnoredMarkers: [String]
 
     // MARK: - TaskNotes Field Mapping (#19)
     @Published var taskNotesFieldMapping: TaskNotesFieldMapping  // Map YAML field names to Remindian properties
@@ -214,7 +221,7 @@ class SyncConfiguration: ObservableObject, Codable {
         case taskNotesMtnPath, taskNotesApiUrl
         case launchAtLogin, maxCompletedTaskAgeDays, syncedRemindersLists, excludedRemindersLists, addTaskLinkToReminders, appendTaskLinkToNotes
         case taskNotesCompletedStatuses, taskNotesOpenStatus, taskNotesDoneStatus
-        case obsidianTasksOpenMarkers, obsidianTasksCompletedMarkers
+        case obsidianTasksOpenMarkers, obsidianTasksCompletedMarkers, obsidianTasksIgnoredMarkers
         case taskNotesFieldMapping, taskNotesListField
         case filePathMappings
         case folderPathMappings
@@ -280,6 +287,7 @@ class SyncConfiguration: ObservableObject, Codable {
         taskNotesDoneStatus: String = "done",
         obsidianTasksOpenMarkers: [String] = [" "],
         obsidianTasksCompletedMarkers: [String] = ["x", "X"],
+        obsidianTasksIgnoredMarkers: [String] = [],
         taskNotesFieldMapping: TaskNotesFieldMapping = TaskNotesFieldMapping(),
         taskNotesListField: String = "tags",
         filePathMappings: [FileMapping] = [],
@@ -342,6 +350,7 @@ class SyncConfiguration: ObservableObject, Codable {
         self.taskNotesDoneStatus = taskNotesDoneStatus
         self.obsidianTasksOpenMarkers = obsidianTasksOpenMarkers
         self.obsidianTasksCompletedMarkers = obsidianTasksCompletedMarkers
+        self.obsidianTasksIgnoredMarkers = obsidianTasksIgnoredMarkers
         self.taskNotesFieldMapping = taskNotesFieldMapping
         self.taskNotesListField = taskNotesListField
         self.filePathMappings = filePathMappings
@@ -413,6 +422,9 @@ class SyncConfiguration: ObservableObject, Codable {
         // hardcoded behavior so existing users see zero behavior change. (#63)
         obsidianTasksOpenMarkers = try container.decodeIfPresent([String].self, forKey: .obsidianTasksOpenMarkers) ?? [" "]
         obsidianTasksCompletedMarkers = try container.decodeIfPresent([String].self, forKey: .obsidianTasksCompletedMarkers) ?? ["x", "X"]
+        // Pre-v5.10.1 configs don't have this key; default to empty so they
+        // continue parsing every checkbox marker as a task (back-compat).
+        obsidianTasksIgnoredMarkers = try container.decodeIfPresent([String].self, forKey: .obsidianTasksIgnoredMarkers) ?? []
         taskNotesFieldMapping = try container.decodeIfPresent(TaskNotesFieldMapping.self, forKey: .taskNotesFieldMapping) ?? TaskNotesFieldMapping()
         taskNotesListField = try container.decodeIfPresent(String.self, forKey: .taskNotesListField) ?? "tags"
         filePathMappings = try container.decodeIfPresent([FileMapping].self, forKey: .filePathMappings) ?? []
@@ -478,6 +490,7 @@ class SyncConfiguration: ObservableObject, Codable {
         try container.encode(taskNotesDoneStatus, forKey: .taskNotesDoneStatus)
         try container.encode(obsidianTasksOpenMarkers, forKey: .obsidianTasksOpenMarkers)
         try container.encode(obsidianTasksCompletedMarkers, forKey: .obsidianTasksCompletedMarkers)
+        try container.encode(obsidianTasksIgnoredMarkers, forKey: .obsidianTasksIgnoredMarkers)
         try container.encode(taskNotesFieldMapping, forKey: .taskNotesFieldMapping)
         try container.encode(taskNotesListField, forKey: .taskNotesListField)
         try container.encode(filePathMappings, forKey: .filePathMappings)

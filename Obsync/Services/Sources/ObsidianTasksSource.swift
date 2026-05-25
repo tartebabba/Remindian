@@ -11,16 +11,18 @@ class ObsidianTasksSource: TaskSource {
     func scanTasks(config: SyncConfiguration) throws -> [SyncTask] {
         // Convert string-form marker config into Character sets the parser
         // expects. Empty entries and multi-char entries are ignored — the
-        // settings UI validates input, but parser stays defensive. (#63)
+        // settings UI validates input, but parser stays defensive. (#63, #70)
         let openMarkers = Set(config.obsidianTasksOpenMarkers.compactMap { $0.first })
         let completedMarkers = Set(config.obsidianTasksCompletedMarkers.compactMap { $0.first })
+        let ignoredMarkers = Set(config.obsidianTasksIgnoredMarkers.compactMap { $0.first })
 
         var tasks = try obsidianService.scanVault(
             at: config.vaultPath,
             excludedFolders: config.excludedFolders,
             includedFolders: config.includedFolders,
             openMarkers: openMarkers.isEmpty ? SyncTask.defaultOpenMarkers : openMarkers,
-            completedMarkers: completedMarkers.isEmpty ? SyncTask.defaultCompletedMarkers : completedMarkers
+            completedMarkers: completedMarkers.isEmpty ? SyncTask.defaultCompletedMarkers : completedMarkers,
+            ignoredMarkers: ignoredMarkers
         )
 
         // Apply global filter (#36) — only keep tasks whose original line contains the filter text

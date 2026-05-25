@@ -16,7 +16,8 @@ class ObsidianService {
         excludedFolders: [String],
         includedFolders: [String] = [],
         openMarkers: Set<Character> = SyncTask.defaultOpenMarkers,
-        completedMarkers: Set<Character> = SyncTask.defaultCompletedMarkers
+        completedMarkers: Set<Character> = SyncTask.defaultCompletedMarkers,
+        ignoredMarkers: Set<Character> = []
     ) throws -> [SyncTask] {
         let vaultURL = URL(fileURLWithPath: path)
         guard fileManager.fileExists(atPath: path) else {
@@ -39,7 +40,8 @@ class ObsidianService {
                     fileURL,
                     vaultPath: path,
                     openMarkers: openMarkers,
-                    completedMarkers: completedMarkers
+                    completedMarkers: completedMarkers,
+                    ignoredMarkers: ignoredMarkers
                 )
                 tasks.append(contentsOf: fileTasks)
             } catch {
@@ -70,7 +72,8 @@ class ObsidianService {
         _ fileURL: URL,
         vaultPath: String,
         openMarkers: Set<Character> = SyncTask.defaultOpenMarkers,
-        completedMarkers: Set<Character> = SyncTask.defaultCompletedMarkers
+        completedMarkers: Set<Character> = SyncTask.defaultCompletedMarkers,
+        ignoredMarkers: Set<Character> = []
     ) throws -> [SyncTask] {
         let content = try String(contentsOf: fileURL, encoding: .utf8)
         let lines = content.components(separatedBy: "\n")
@@ -90,7 +93,8 @@ class ObsidianService {
                 filePath: relativePath,
                 lineNumber: index + 1,
                 openMarkers: openMarkers,
-                completedMarkers: completedMarkers
+                completedMarkers: completedMarkers,
+                ignoredMarkers: ignoredMarkers
             ) {
                 // Attach client name from frontmatter for work tasks
                 if clientName != nil {

@@ -999,7 +999,25 @@ struct AdvancedSettingsView: View {
                             Text("Completed markers")
                         }
 
-                        Text("Comma-separated single characters. Leave the leading entry as ` ` (space) to keep the standard checkbox open.")
+                        // Ignored markers (#70). No safety default — empty
+                        // is the legitimate "don't ignore anything" state.
+                        LabeledContent {
+                            TextField("i, _", text: Binding(
+                                get: { syncManager.config.obsidianTasksIgnoredMarkers.joined(separator: ", ") },
+                                set: { newValue in
+                                    syncManager.config.obsidianTasksIgnoredMarkers = newValue
+                                        .split(separator: ",", omittingEmptySubsequences: false)
+                                        .map { String($0).trimmingCharacters(in: .whitespaces) }
+                                        .filter { $0.count == 1 }
+                                }
+                            ))
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 250)
+                        } label: {
+                            Text("Ignored markers")
+                        }
+
+                        Text("Comma-separated single characters. Open and completed markers classify checkbox state; ignored markers tell Remindian to skip the line entirely (useful for status markers like `[i]` that aren't real tasks).")
                             .font(.caption2)
                             .foregroundColor(.secondary)
                     }

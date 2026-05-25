@@ -170,18 +170,29 @@ extension SyncTask {
     ///     callers can opt in by passing them here. (#63)
     ///   - completedMarkers: Single characters that count as "done / completed".
     ///     Defaults to `["x", "X"]`. Callers can map cancelled (`[-]`) here too.
+    ///   - ignoredMarkers: Single characters that mean "this isn't a task at
+    ///     all — skip the entire line". Returns `nil` when the checkbox
+    ///     marker is in this set. Used by patterns like `[i]` for
+    ///     informational entries that shouldn't sync to reminders (#70).
+    ///     Defaults to empty — back-compat with pre-v5.10.1 callers.
+    ///     If a marker is in both ignored and open/completed, ignored wins.
     static func fromObsidianLine(
         _ line: String,
         filePath: String,
         lineNumber: Int,
         openMarkers: Set<Character> = defaultOpenMarkers,
-        completedMarkers: Set<Character> = defaultCompletedMarkers
+        completedMarkers: Set<Character> = defaultCompletedMarkers,
+        ignoredMarkers: Set<Character> = []
     ) -> SyncTask? {
         let trimmed = line.trimmingCharacters(in: .whitespaces)
 
         // Use the shared checkbox extractor so the rules stay consistent with
         // surgical-edit code (markTaskComplete, etc.). (#63)
         guard let checkbox = extractCheckbox(from: trimmed) else { return nil }
+
+        // Ignored takes priority over everything else. Treats the line as a
+        // non-task — scanner won't see it, sync won't touch it. (#70)
+        if ignoredMarkers.contains(checkbox.marker) { return nil }
 
         // Classify the marker. Unknown markers fall through to "open" — this
         // is the safe choice (we'd rather show an unknown-status task than
